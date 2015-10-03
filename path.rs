@@ -13,25 +13,14 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
-extern crate piston;
-extern crate graphics;
-extern crate vecmath;
-extern crate glutin_window;
-extern crate opengl_graphics;
-
-use graphics::*;
-use graphics::math::Matrix2d;
-use graphics::types::Color;
-use opengl_graphics::{ GlGraphics, OpenGL };
-use piston::input::keyboard::Key;
-use piston::input::mouse::MouseButton;
-use vecmath::Vector2;
-
-
 const BOARD_WIDTH: usize = 15;
 const BOARD_HEIGHT: usize = 15;
 const TILE_SIZE: f64 = 50.0;
 const UPDATE_TIME: f64 = 0.15;
+
+
+extern crate vecmath;
+use vecmath::Vector2;
 
 type Point = Vector2<i32>;
 trait Point2<T> {
@@ -75,6 +64,19 @@ impl Tile {
     }}
 }
 
+
+extern crate piston;
+use piston::input::keyboard::Key;
+use piston::input::mouse::MouseButton;
+
+extern crate graphics;
+use graphics::{Context,color,math};
+use graphics::math::Matrix2d;
+use graphics::types::Color;
+
+extern crate opengl_graphics;
+use opengl_graphics::GlGraphics;
+
 struct Game {
     board : [[Tile; BOARD_WIDTH]; BOARD_HEIGHT],
     target : Option<Point>,
@@ -92,14 +94,17 @@ struct Game {
     }
 
     fn render(&mut self,  tile_size: f64,  transform: math::Matrix2d, gfx: &mut GlGraphics) {
+        extern crate glutin_window;
+        use graphics::{clear, rectangle};
+
         clear(color::hex("000000"), gfx);
 
         //tiles
         for (y,ref row) in self.board.into_iter().enumerate() {
             for (x,tile) in row.into_iter().enumerate() {
-                rectangle(
+                graphics::rectangle(
                     tile.color(),
-                    rectangle::square(
+                    graphics::rectangle::square(
                         x as f64 * tile_size,
                         y as f64 * tile_size,
                         tile_size
@@ -141,30 +146,36 @@ struct Game {
     }
 }
 
-fn main() {
-    use glutin_window::GlutinWindow;
-    use piston::window::{Window, WindowSettings};
-    use piston::event_loop::Events;
-    use piston::input::{Button, Motion, Event, Input, RenderEvent};
+use piston::window::WindowSettings;
+use piston::event_loop::Events;
+use piston::input::{Button, Motion, Event, Input, RenderEvent};
+use opengl_graphics::OpenGL;
 
+extern crate piston_window;
+use piston_window::PistonWindow;
+
+fn main() {
     println!("P => Pause");
 
-    let window = GlutinWindow::new(
-        WindowSettings::new("PistonPath",
-                            [BOARD_WIDTH as u32 * TILE_SIZE as u32, BOARD_HEIGHT as u32 * TILE_SIZE as u32])
-            .exit_on_esc(true)
-		).unwrap();
+    let window: PistonWindow =
+        WindowSettings::new("PistonPath", [
+                BOARD_WIDTH as u32 * TILE_SIZE as u32,
+                BOARD_HEIGHT as u32 * TILE_SIZE as u32
+            ]).exit_on_esc(true).build().unwrap();
 
     let mut gfx = GlGraphics::new(OpenGL::V3_2);
-    let mut mouse_pos : (f64, f64) = (std::f64::NAN, std::f64::NAN);
+    let mut mouse_pos: (f64, f64) = (std::f64::NAN, std::f64::NAN);
     let mut tile_size = TILE_SIZE;
 
     let mut game = Game::new();
-
-    for e in Events::events(window) {//events() is from event_loop::Events
+    for e in window.events() {
         match e {
             Event::Render(render_args/*: RenderArgs*/) => {
                 let transform: Matrix2d = Context::new_viewport(render_args.viewport()).transform;
+                //update if window has been resized, else weird thing would happen
+                //THANK YOU Arcterus/game-of-life/src/app.rs
+                &mut gfx.viewport(0, 0, render_args.width as i32, render_args.height as i32);
+
                 game.render(tile_size, transform, &mut gfx);
             }
             Event::Update(update_args) => {
@@ -178,14 +189,11 @@ fn main() {
                 let tile = [(x/tile_size) as i32, (y/tile_size) as i32];
                 if tile.x() >= 0  &&  tile.x() < BOARD_WIDTH as i32
                 && tile.y() >= 0  &&  tile.y() < BOARD_HEIGHT as i32 {
-                    println!("mouse click: ({}, {}) -> ({}, {})", x, y,  tile.x(), tile.y());
                     game.mouse_click(tile, button);
                 }// else click in the black area when the window has been resized
             }
             Event::Input(Input::Resize(x,y)) => {
                 tile_size = f64::min( x as f64 / (BOARD_WIDTH as f64),  y as f64 / (BOARD_HEIGHT as f64));
-                println!("resize: ({}, {}) -> {}", x, y, tile_size);
-                //println!(", window.draw_size: {:?}, window.size: {:?}", window.draw_size(), window.size());
             }
             Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
                 mouse_pos = (x,y);
