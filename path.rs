@@ -16,11 +16,14 @@
 const BOARD_WIDTH: usize = 15;
 const BOARD_HEIGHT: usize = 15;
 const TILE_SIZE: f64 = 50.0;
+const BORDER_RADIUS: f64 = 0.5;
 const UPDATE_TIME: f64 = 0.15;
 
 
 extern crate vecmath;
 use vecmath::Vector2;
+extern crate graphics;
+use graphics::math::{Vec2d, Matrix2d, Scalar};
 
 type Point = Vector2<i32>;
 trait Point2<T> {
@@ -30,6 +33,11 @@ trait Point2<T> {
 impl Point2<i32> for Point {
     fn x(&self) -> i32 {self[0]}
     fn y(&self) -> i32 {self[1]}
+}
+
+impl Point2<Scalar> for Vec2d {
+    fn x(&self) -> Scalar {self[0]}
+    fn y(&self) -> Scalar {self[1]}
 }
 
 #[derive(PartialEq, Copy, Clone)]
@@ -64,22 +72,21 @@ impl Tile {
     }}
 }
 
+use graphics::{Context,color,math};
+use graphics::types::Color;
+use std::cmp;
+use std::collections::HashMap;
 
 extern crate piston;
 use piston::input::keyboard::Key;
 use piston::input::mouse::MouseButton;
-
-extern crate graphics;
-use graphics::{Context,color,math};
-use graphics::math::Matrix2d;
-use graphics::types::Color;
 
 extern crate opengl_graphics;
 use opengl_graphics::GlGraphics;
 
 struct Game {
     board : [[Tile; BOARD_WIDTH]; BOARD_HEIGHT],
-    target : Option<Point>,
+    target : Option<*mut Tile>,//should have been an Option<&mut tile>, but rustc complains about lifetimes
     paused : bool,
     time: f64,
     update_time: f64,
@@ -93,25 +100,40 @@ struct Game {
         }
     }
 
+    //in the returned pair, first,x<=second.x and first.y<=second.y, now they can be uused in a loop or draw
+    fn order_points(a:Point, b:Point) -> (Point,Point) {
+        ([cmp::min(a.x(), b.x()),  cmp::min(a.y(), b.y())],
+         [cmp::max(a.x(), b.x()),  cmp::max(a.y(), b.y())])
+    }
+
     fn render(&mut self,  tile_size: f64,  transform: math::Matrix2d, gfx: &mut GlGraphics) {
         extern crate glutin_window;
-        use graphics::{clear, rectangle};
+        use graphics::{clear, rectangle, Rectangle, Line};
+        extern crate num;
+        //use ToPrimitive;
+        fn mul<T: num::ToPrimitive>(a:T, b:T, c:T, d:T, tile_size:f64) -> [f64; 4] {
+            [a.to_f64().unwrap()*tile_size,  b.to_f64().unwrap()*tile_size,  c.to_f64().unwrap()*tile_size,  d.to_f64().unwrap()*tile_size]
+        }
+        // let mul: FnOnce(T,T,T,T)->f64 = |a:T, b:usize, c:usize, d:usize| -> [f64;4] {//exploiting that Rectangle and line both are [f64; 4]
+        //     [a as f64*tile_size,  b as f64*tile_size,  c as f64*tile_size,  d as f64*tile_size]
+        // };
 
         clear(color::hex("000000"), gfx);
 
         //tiles
         for (y,ref row) in self.board.into_iter().enumerate() {
             for (x,tile) in row.into_iter().enumerate() {
-                graphics::rectangle(
-                    tile.color(),
-                    graphics::rectangle::square(
-                        x as f64 * tile_size,
-                        y as f64 * tile_size,
-                        tile_size
-                    ),
-                    transform, gfx
-                );
+                graphics::rectangle(tile.color(), mul(x,y,1,1, tile_size), transform, gfx);
             }
+        }
+
+        //border lines
+        let line_color = [0.4, 0.4, 0.4, 0.9];//grey
+        for y in 1..BOARD_HEIGHT {
+            graphics::line(line_color, BORDER_RADIUS, mul(0,y,BOARD_WIDTH,y, tile_size),  transform, gfx);
+        }
+        for x in 1..BOARD_WIDTH {
+            graphics::line(line_color, BORDER_RADIUS, mul(x,0,x,BOARD_HEIGHT, tile_size),  transform, gfx);
         }
     }
 
@@ -122,20 +144,39 @@ struct Game {
         self.time += dt;
     }
 
-    fn mouse_click(&mut self,  pos : Point,  button: MouseButton) {
-        let tile = &mut self.board[pos.y() as usize][pos.x() as usize];
-        match (button, *tile) {
-            (MouseButton::Left, Open(_)) => {*tile = Wall}
-            (MouseButton::Left, Wall) => {*tile = Open(None)}
-            (MouseButton::Right, Target) => {
-                *tile = Open(None);
-                self.target = None;
+    fn mouse_click(&mut self,  button: MouseButton,  press: Point,  release: Point) {
+        match button {
+            MouseButton::Left => {
+                let from = self.board[press.y() as usize][press.x() as usize];
+                let set = match from {Open(_)=>{Wall} Wall=>{Open(None)} Target=>{return}};
+
+                let (first, second) = Game::order_points(press, release);
+                for row in &mut self.board[first.y()as usize .. 1+second.y()as usize] {
+                    for tile in &mut row[first.x()as usize .. 1+second.x()as usize].iter_mut() {
+                        if *tile != Target {
+                            *tile = set;
+                }   }   }
             }
-            (MouseButton::Right, Open(_)) => {
-                *tile = Target;
-                self.target = Some(pos);
+            MouseButton::Right => {
+                if press != release {
+                    return;//don't update
+                }
+                //cannot move the next line into a function, because that function would borrow whole self
+                let tile = &mut self.board[release.y() as usize][release.x() as usize];
+                let mut remove = false;
+                if let Some(old) = self.target {unsafe {
+                    *old = Open(None);
+                    if old == tile {//doesn't compile if switched
+                        self.target = None;
+                        remove = true;
+                    }
+                }}
+                if !remove {
+                    *tile = Target;
+                    self.target = Some(tile);
+                }
             }
-            (_,_) => {}
+            _ => {}
         }
     }
 
@@ -162,10 +203,11 @@ fn main() {
                 BOARD_WIDTH as u32 * TILE_SIZE as u32,
                 BOARD_HEIGHT as u32 * TILE_SIZE as u32
             ]).exit_on_esc(true).build().unwrap();
-
     let mut gfx = GlGraphics::new(OpenGL::V3_2);
-    let mut mouse_pos: (f64, f64) = (std::f64::NAN, std::f64::NAN);
     let mut tile_size = TILE_SIZE;
+
+    let mut mouse_pos: Vec2d = [std::f64::NAN, std::f64::NAN];
+    let mut mouse_press: HashMap<MouseButton, Vec2d> = HashMap::new();
 
     let mut game = Game::new();
     for e in window.events() {
@@ -175,28 +217,43 @@ fn main() {
                 //update if window has been resized, else weird thing would happen
                 //THANK YOU Arcterus/game-of-life/src/app.rs
                 &mut gfx.viewport(0, 0, render_args.width as i32, render_args.height as i32);
+                //TODO: center letterboxing
 
                 game.render(tile_size, transform, &mut gfx);
             }
             Event::Update(update_args) => {
                 game.update(update_args.dt);//deltatime is its only field
             }
+
             Event::Input(Input::Press(Button::Keyboard(key))) => {
                 game.key_press(key);
             }
             Event::Input(Input::Press(Button::Mouse(button))) => {
-                let (x, y) = mouse_pos;
-                let tile = [(x/tile_size) as i32, (y/tile_size) as i32];
-                if tile.x() >= 0  &&  tile.x() < BOARD_WIDTH as i32
-                && tile.y() >= 0  &&  tile.y() < BOARD_HEIGHT as i32 {
-                    game.mouse_click(tile, button);
-                }// else click in the black area when the window has been resized
+                mouse_press.insert(button, mouse_pos);
+            }
+            Event::Input(Input::Release(Button::Mouse(button))) => {
+                let valid = |pos: Vec2d| {
+                    let tile = [(pos.x()/tile_size) as i32, (pos.y()/tile_size) as i32];
+                    if tile.x() >= 0  &&  tile.x() < BOARD_WIDTH as i32
+                    && tile.y() >= 0  &&  tile.y() < BOARD_HEIGHT as i32 {
+                        Some(tile)
+                    } else {
+                        None
+                    }
+                };
+
+                let press = mouse_press.remove(&button).and_then(&valid);
+                let release = valid(mouse_pos);
+                match (press, release) {
+                    (Some(v_press), Some(v_release)) => {game.mouse_click(button, v_press, v_release)}
+                    (_,_) => {}// else click in the black area when the window has been resized
+                }
             }
             Event::Input(Input::Resize(x,y)) => {
                 tile_size = f64::min( x as f64 / (BOARD_WIDTH as f64),  y as f64 / (BOARD_HEIGHT as f64));
             }
             Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
-                mouse_pos = (x,y);
+                mouse_pos = [x,y];
             }
             _ => {}
         }
