@@ -75,7 +75,6 @@ impl Tile {
 use graphics::{Context,color,math};
 use graphics::types::Color;
 use std::cmp;
-use std::collections::HashMap;
 
 extern crate piston;
 use piston::input::keyboard::Key;
@@ -87,16 +86,21 @@ use opengl_graphics::GlGraphics;
 struct Game {
     board : [[Tile; BOARD_WIDTH]; BOARD_HEIGHT],
     target : Option<*mut Tile>,//should have been an Option<&mut tile>, but rustc complains about lifetimes
+    mouse_pos : Option<Point>,
+    selection_start : Option<Point>,
     paused : bool,
     time: f64,
     update_time: f64,
 } impl Game {
     fn new() -> Game {
-        Game {time: UPDATE_TIME,
-              update_time: UPDATE_TIME,
-              paused: false,
-              target: None,
-              board: [[Tile::Open(None); BOARD_WIDTH]; BOARD_HEIGHT],
+        Game {
+            time: UPDATE_TIME,
+            update_time: UPDATE_TIME,
+            paused: false,
+            selection_start: None,
+            mouse_pos: None,
+            target: None,
+            board: [[Tile::Open(None); BOARD_WIDTH]; BOARD_HEIGHT],
         }
     }
 
@@ -127,8 +131,21 @@ struct Game {
             }
         }
 
+        if let Some(mouse_pos) = self.mouse_pos {
+            //selection
+            if let Some(start) = self.selection_start {
+                let (a,b) = Game::order_points(start, mouse_pos);
+                let rect = mul(a.x(), a.y(),  b.x()-a.x()+1, b.y()-a.y()+1, tile_size);
+                let selection_color = [1.0, 1.0, 1.0, 0.2];//white
+                graphics::rectangle(selection_color, rect, transform, gfx);
+            }
+            //hover
+            let mouse_color = [0.9, 1.0, 0.9, 0.1];//light green
+            graphics::rectangle(mouse_color,  mul(mouse_pos.x(), mouse_pos.y(), 1, 1, tile_size),  transform,  gfx);
+        }
+
         //border lines
-        let line_color = [0.4, 0.4, 0.4, 0.9];//grey
+        let line_color = [0.4, 0.4, 0.4, 0.8];//grey
         for y in 1..BOARD_HEIGHT {
             graphics::line(line_color, BORDER_RADIUS, mul(0,y,BOARD_WIDTH,y, tile_size),  transform, gfx);
         }
@@ -144,39 +161,49 @@ struct Game {
         self.time += dt;
     }
 
-    fn mouse_click(&mut self,  button: MouseButton,  press: Point,  release: Point) {
-        match button {
-            MouseButton::Left => {
-                let from = self.board[press.y() as usize][press.x() as usize];
-                let set = match from {Open(_)=>{Wall} Wall=>{Open(None)} Target=>{return}};
+    fn mouse_move(&mut self,  pos: Option<Point>) {
+        self.mouse_pos = pos;
+        if pos.is_none() {
+            self.selection_start = None;
+        }
+    }
+    fn mouse_press(&mut self,  button: MouseButton) {
+        if button == MouseButton::Left  &&  self.mouse_pos.is_some() {
+            self.selection_start = self.mouse_pos;
+        }
+    }
 
-                let (first, second) = Game::order_points(press, release);
-                for row in &mut self.board[first.y()as usize .. 1+second.y()as usize] {
-                    for tile in &mut row[first.x()as usize .. 1+second.x()as usize].iter_mut() {
-                        if *tile != Target {
-                            *tile = set;
-                }   }   }
-            }
-            MouseButton::Right => {
-                if press != release {
-                    return;//don't update
-                }
+    fn mouse_release(&mut self,  button: MouseButton) {
+        match (button, self.mouse_pos) {
+            (MouseButton::Left, Some(end)) => {
+                if let Some(start) = self.selection_start {
+                    self.selection_start = None;
+
+                    let from = self.board[start.y() as usize][start.x() as usize];
+                    let set = match from {Open(_)=>{Wall} Wall=>{Open(None)} Target=>{return}};
+
+                    let (first, second) = Game::order_points(start, end);
+                    for row in &mut self.board[first.y()as usize .. 1+second.y()as usize] {
+                        for tile in &mut row[first.x()as usize .. 1+second.x()as usize].iter_mut() {
+                            if *tile != Target {
+                                *tile = set;
+            }   }   }   }   }
+            (MouseButton::Right, Some(pos))  =>  {
                 //cannot move the next line into a function, because that function would borrow whole self
-                let tile = &mut self.board[release.y() as usize][release.x() as usize];
+                let tile = &mut self.board[pos.y() as usize][pos.x() as usize];
                 let mut remove = false;
-                if let Some(old) = self.target {unsafe {
-                    *old = Open(None);
+                if let Some(old) = self.target {
+                    unsafe {*old = Open(None);}//remove old target
                     if old == tile {//doesn't compile if switched
                         self.target = None;
                         remove = true;
-                    }
-                }}
+                }   }
                 if !remove {
                     *tile = Target;
                     self.target = Some(tile);
                 }
             }
-            _ => {}
+            (_,_) => {}
         }
     }
 
@@ -203,11 +230,14 @@ fn main() {
                 BOARD_WIDTH as u32 * TILE_SIZE as u32,
                 BOARD_HEIGHT as u32 * TILE_SIZE as u32
             ]).exit_on_esc(true).build().unwrap();
-    let mut gfx = GlGraphics::new(OpenGL::V3_2);
-    let mut tile_size = TILE_SIZE;
 
-    let mut mouse_pos: Vec2d = [std::f64::NAN, std::f64::NAN];
-    let mut mouse_press: HashMap<MouseButton, Vec2d> = HashMap::new();
+    let mut gfx = GlGraphics::new(OpenGL::V3_2);
+    //by default alpha blending is disabled, which means all semi-transparent colors are considered opaque.
+    //since colors are blended pixel for pixel, this has a performance cost,
+    //the alternative is to check for existing color in tile, and blend manually, or even statically
+    gfx.enable_alpha_blend();
+
+    let mut tile_size = TILE_SIZE;//changes if window is resized
 
     let mut game = Game::new();
     for e in window.events() {
@@ -229,31 +259,26 @@ fn main() {
                 game.key_press(key);
             }
             Event::Input(Input::Press(Button::Mouse(button))) => {
-                mouse_press.insert(button, mouse_pos);
+                game.mouse_press(button);
             }
             Event::Input(Input::Release(Button::Mouse(button))) => {
-                let valid = |pos: Vec2d| {
-                    let tile = [(pos.x()/tile_size) as i32, (pos.y()/tile_size) as i32];
-                    if tile.x() >= 0  &&  tile.x() < BOARD_WIDTH as i32
-                    && tile.y() >= 0  &&  tile.y() < BOARD_HEIGHT as i32 {
-                        Some(tile)
-                    } else {
-                        None
-                    }
-                };
-
-                let press = mouse_press.remove(&button).and_then(&valid);
-                let release = valid(mouse_pos);
-                match (press, release) {
-                    (Some(v_press), Some(v_release)) => {game.mouse_click(button, v_press, v_release)}
-                    (_,_) => {}// else click in the black area when the window has been resized
-                }
+                game.mouse_release(button);
             }
             Event::Input(Input::Resize(x,y)) => {
                 tile_size = f64::min( x as f64 / (BOARD_WIDTH as f64),  y as f64 / (BOARD_HEIGHT as f64));
             }
             Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
-                mouse_pos = [x,y];
+                let tile = [(x/ tile_size) as i32, (y/ tile_size) as i32];
+                let mut pos = None;
+                if tile.x() >= 0  &&  tile.x() < BOARD_WIDTH as i32
+                && tile.y() >= 0  &&  tile.y() < BOARD_HEIGHT as i32 {
+                    pos = Some(tile)
+                }
+                game.mouse_move(pos);
+            }
+            Event::Input(Input::Focus(false)) => {//a click outsidde the window
+                game.mouse_move(None);//best we can do on detecting mouse leaving window
+                //see https://github.com/PistonDevelopers/piston/issues/962
             }
             _ => {}
         }
