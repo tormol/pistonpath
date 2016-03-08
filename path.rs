@@ -284,7 +284,7 @@ struct Game {
 }
 
 use piston::window::WindowSettings;
-use piston::event_loop::Events;
+use piston::event_loop::{Events,WindowEvents};
 use piston::input::{Button, Motion, Event, Input, RenderEvent};
 use opengl_graphics::OpenGL;
 
@@ -294,7 +294,7 @@ use piston_window::PistonWindow;
 fn main() {
     println!("P => Pause");
 
-    let window: PistonWindow =
+    let mut window: PistonWindow =
         WindowSettings::new("PistonPath", [
                 INITIAL_TILE_SIZE as u32  *  BOARD_WIDTH as u32,
                 INITIAL_TILE_SIZE as u32  *  BOARD_HEIGHT as u32
@@ -309,7 +309,8 @@ fn main() {
     let mut tile_size = INITIAL_TILE_SIZE;//changes if window is resized
 
     let mut game = Game::new();
-    for e in window.events() {
+    let mut event_loop: WindowEvents = window.events();
+    while let Some(e) = event_loop.next(&mut window) {
         match e {
             Event::Render(render_args/*: RenderArgs*/) => {
                 //update if window has been resized, else weird things would happen
