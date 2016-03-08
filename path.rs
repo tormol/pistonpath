@@ -13,12 +13,16 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
-const BOARD_WIDTH: usize = 15;
-const BOARD_HEIGHT: usize = 15;
-const TILE_SIZE: f64 = 50.0;
-const BORDER_RADIUS: f64 = 0.5;
-const UPDATE_TIME: f64 = 0.15;
+const FONT_PATH: &'static str = "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
+const FONT_RESOLUTION: f64 = 100.0;
+const BORDER_RADIUS: f64 = 0.03;//where 1 is tile_size
+const TILE_MIN_PADDING: f64 = 0.1;
+const SHOW_DIGITS: f64 = 3.0;
+const INITIAL_TILE_SIZE: f64 = 50.0;
 
+const BOARD_WIDTH: i32 = 20;
+const BOARD_HEIGHT: i32 = 15;
+const UPDATE_TIME: f64 = 0.15;
 
 extern crate vecmath;
 use vecmath::Vector2;
@@ -26,6 +30,14 @@ extern crate graphics;
 use graphics::math::{Vec2d, Matrix2d, Scalar};
 
 type Point = Vector2<i32>;
+trait Intpointadd {
+    fn plus(&self, other:Point) -> Point;//coherence rules means we cant implement Add :|
+}
+impl Intpointadd for Point {
+    fn plus(&self, other:Point) -> Point {
+        [self.x()+other.x(), self.y()+other.y()]
+    }
+}
 trait Point2<T> {
     fn x(&self) -> T;
     fn y(&self) -> T;
@@ -40,6 +52,7 @@ impl Point2<Scalar> for Vec2d {
     fn y(&self) -> Scalar {self[1]}
 }
 
+
 #[derive(PartialEq, Copy, Clone)]
 enum Direction {North, South, East, West,}
 impl Direction {
@@ -53,7 +66,7 @@ impl Direction {
 
 #[derive(PartialEq, Copy, Clone)]
 struct Path {
-    distance : u16,
+    distance : i32,
     next : Direction,
 }
 
@@ -72,7 +85,7 @@ impl Tile {
     }}
 }
 
-use graphics::{Context,color,math};
+use graphics::{Context,DrawState,Transformed,color,math};
 use graphics::types::Color;
 use std::cmp;
 
@@ -82,25 +95,30 @@ use piston::input::mouse::MouseButton;
 
 extern crate opengl_graphics;
 use opengl_graphics::GlGraphics;
+use opengl_graphics::glyph_cache::GlyphCache;
 
+type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 struct Game {
-    board : [[Tile; BOARD_WIDTH]; BOARD_HEIGHT],
-    target : Option<*mut Tile>,//should have been an Option<&mut tile>, but rustc complains about lifetimes
-    mouse_pos : Option<Point>,
-    selection_start : Option<Point>,
-    paused : bool,
+    board: Board,
+    target: Option<Point>,
+    mouse_pos: Option<Point>,
+    selection_start: Option<Point>,
+    paused: bool,
     time: f64,
     update_time: f64,
+    //static resources
+    res_character_cache: GlyphCache<'static>,
 } impl Game {
     fn new() -> Game {
         Game {
+            res_character_cache: GlyphCache::new(std::path::Path::new(FONT_PATH)).unwrap(),
             time: UPDATE_TIME,
             update_time: UPDATE_TIME,
             paused: false,
             selection_start: None,
             mouse_pos: None,
             target: None,
-            board: [[Tile::Open(None); BOARD_WIDTH]; BOARD_HEIGHT],
+            board: [[Tile::Open(None); BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
         }
     }
 
@@ -110,24 +128,36 @@ struct Game {
          [cmp::max(a.x(), b.x()),  cmp::max(a.y(), b.y())])
     }
 
-    fn render(&mut self,  tile_size: f64,  transform: math::Matrix2d, gfx: &mut GlGraphics) {
-        extern crate glutin_window;
-        use graphics::{clear, rectangle, Rectangle, Line};
+    fn render(&mut self,  draw_state: DrawState,  transform: math::Matrix2d, gfx: &mut GlGraphics) {
+        //use graphics::rectangle;
         extern crate num;
-        //use ToPrimitive;
-        fn mul<T: num::ToPrimitive>(a:T, b:T, c:T, d:T, tile_size:f64) -> [f64; 4] {
-            [a.to_f64().unwrap()*tile_size,  b.to_f64().unwrap()*tile_size,  c.to_f64().unwrap()*tile_size,  d.to_f64().unwrap()*tile_size]
+        fn to_f64_4<T: num::ToPrimitive>(a:T, b:T, c:T, d:T) -> [f64; 4] {
+            [a.to_f64().unwrap(), b.to_f64().unwrap(), c.to_f64().unwrap(), d.to_f64().unwrap()]
         }
-        // let mul: FnOnce(T,T,T,T)->f64 = |a:T, b:usize, c:usize, d:usize| -> [f64;4] {//exploiting that Rectangle and line both are [f64; 4]
-        //     [a as f64*tile_size,  b as f64*tile_size,  c as f64*tile_size,  d as f64*tile_size]
-        // };
 
-        clear(color::hex("000000"), gfx);
+        graphics::clear(color::BLACK, gfx);//comment out and see!
 
         //tiles
-        for (y,ref row) in self.board.into_iter().enumerate() {
-            for (x,tile) in row.into_iter().enumerate() {
-                graphics::rectangle(tile.color(), mul(x,y,1,1, tile_size), transform, gfx);
+        for (y_usize,ref row) in self.board.into_iter().enumerate() {
+            for (x_usize,tile) in row.into_iter().enumerate() {
+                let (x,y) = (x_usize as f64, y_usize as f64);
+                graphics::rectangle(tile.color(), [x,y,1.0,1.0], transform, gfx);
+                if let Open(Some(path)) = *tile {
+                    let as_str: &str = &path.distance.to_string()[..];//[..] converts String to str
+                    let digits = as_str.len() as f64;//digits aren't unicode
+                    let digit_height = 0.8;
+                    let digit_width = 0.6;
+                    let width = digit_width*SHOW_DIGITS;
+                    let scale_fill = f64::max(digit_height, width) - TILE_MIN_PADDING - BORDER_RADIUS;
+                    let bottom_padding = (1.0-digit_height/scale_fill) / 2.0;
+                    let left_padding = (1.0-width/scale_fill) / 2.0  +  (digit_width/(scale_fill-TILE_MIN_PADDING)) * (SHOW_DIGITS-digits);
+                    let scale_factor = 1.0 / (scale_fill*FONT_RESOLUTION);
+                    let char_pos = transform
+                        .trans(x + left_padding,  1.0 + y - bottom_padding)
+                        .scale(scale_factor, scale_factor);
+                    graphics::text::Text::new_color(Target.color(), FONT_RESOLUTION as u32)
+                        .draw(as_str, &mut self.res_character_cache, &draw_state, char_pos, gfx);
+                }
             }
         }
 
@@ -135,22 +165,22 @@ struct Game {
             //selection
             if let Some(start) = self.selection_start {
                 let (a,b) = Game::order_points(start, mouse_pos);
-                let rect = mul(a.x(), a.y(),  b.x()-a.x()+1, b.y()-a.y()+1, tile_size);
+                let rect = to_f64_4(a.x(), a.y(),  b.x()-a.x()+1, b.y()-a.y()+1);
                 let selection_color = [1.0, 1.0, 1.0, 0.2];//white
                 graphics::rectangle(selection_color, rect, transform, gfx);
             }
             //hover
             let mouse_color = [0.9, 1.0, 0.9, 0.1];//light green
-            graphics::rectangle(mouse_color,  mul(mouse_pos.x(), mouse_pos.y(), 1, 1, tile_size),  transform,  gfx);
+            graphics::rectangle(mouse_color,  to_f64_4(mouse_pos.x(), mouse_pos.y(), 1, 1),  transform,  gfx);
         }
 
         //border lines
-        let line_color = [0.4, 0.4, 0.4, 0.8];//grey
+        let line_color = [0.4, 0.4, 0.4, 0.3];//grey
         for y in 1..BOARD_HEIGHT {
-            graphics::line(line_color, BORDER_RADIUS, mul(0,y,BOARD_WIDTH,y, tile_size),  transform, gfx);
+            graphics::line(line_color, BORDER_RADIUS, to_f64_4(0,y,BOARD_WIDTH,y),  transform, gfx);
         }
         for x in 1..BOARD_WIDTH {
-            graphics::line(line_color, BORDER_RADIUS, mul(x,0,x,BOARD_HEIGHT, tile_size),  transform, gfx);
+            graphics::line(line_color, BORDER_RADIUS, to_f64_4(x,0,x,BOARD_HEIGHT),  transform, gfx);
         }
     }
 
@@ -159,6 +189,47 @@ struct Game {
             return;
         }
         self.time += dt;
+    }
+
+    fn update_paths(&mut self) {
+        //reset all
+        for row in &mut self.board {
+            for tile in &mut row.iter_mut() {
+                if let Open(Some(_)) = *tile {
+                    *tile = Open(None);
+        }   }   }
+
+        if let Some(target) = self.target {
+            use std::collections::vec_deque::VecDeque;
+            use Direction::*;
+
+            fn go<'a>(board: &'a mut Board,  p: Point,  from_dist: i32,  from_dir: Direction) -> bool {
+                if p.x()>=0  &&  p.x()<BOARD_WIDTH
+                && p.y()>=0  &&  p.y()<BOARD_HEIGHT {
+                    let tile = &mut board[p.y()as usize][p.x()as usize];
+                    if let Open(to_path) = *tile {
+                        let default_path = Path{distance: std::i32::MAX,  next: North};
+                        if from_dist < to_path.unwrap_or(default_path).distance {
+                            *tile = Open(Some(Path{distance: from_dist,  next: from_dir}));
+                            true
+                        } else {false}
+                    } else if from_dist==0 && *tile == Target {
+                        true//initial tile
+                    } else {false}
+                } else {false}
+            }
+
+            let mut to_check : VecDeque<(Point, i32, Direction)> = VecDeque::new();
+            to_check.push_back((target, 0, South));
+            while let Some((from_pos, from_dist, from_dir)) = to_check.pop_front() {
+                if go(&mut self.board,  from_pos,  from_dist, from_dir) {
+                    to_check.push_back((from_pos.plus(North.unit_vector()), from_dist+1, South));
+                    to_check.push_back((from_pos.plus(South.unit_vector()), from_dist+1, North));
+                    to_check.push_back((from_pos.plus( West.unit_vector()), from_dist+1,  East));
+                    to_check.push_back((from_pos.plus( East.unit_vector()), from_dist+1,  West));
+                }
+            }
+        }
     }
 
     fn mouse_move(&mut self,  pos: Option<Point>) {
@@ -189,22 +260,20 @@ struct Game {
                                 *tile = set;
             }   }   }   }   }
             (MouseButton::Right, Some(pos))  =>  {
-                //cannot move the next line into a function, because that function would borrow whole self
-                let tile = &mut self.board[pos.y() as usize][pos.x() as usize];
-                let mut remove = false;
-                if let Some(old) = self.target {
-                    unsafe {*old = Open(None);}//remove old target
-                    if old == tile {//doesn't compile if switched
-                        self.target = None;
-                        remove = true;
-                }   }
-                if !remove {
-                    *tile = Target;
-                    self.target = Some(tile);
+                let mut set = true;
+                if let Some(target) = self.target {
+                    self.board[target.y() as usize][target.x() as usize] = Open(None);
+                    self.target = None;
+                    set = pos != target;
+                }
+                if set {
+                    self.board[pos.y() as usize][pos.x() as usize] = Target;
+                    self.target = Some(pos);
                 }
             }
             (_,_) => {}
         }
+        self.update_paths();
     }
 
     fn key_press(&mut self,  key: Key) {
@@ -227,8 +296,8 @@ fn main() {
 
     let window: PistonWindow =
         WindowSettings::new("PistonPath", [
-                BOARD_WIDTH as u32 * TILE_SIZE as u32,
-                BOARD_HEIGHT as u32 * TILE_SIZE as u32
+                INITIAL_TILE_SIZE as u32  *  BOARD_WIDTH as u32,
+                INITIAL_TILE_SIZE as u32  *  BOARD_HEIGHT as u32
             ]).exit_on_esc(true).build().unwrap();
 
     let mut gfx = GlGraphics::new(OpenGL::V3_2);
@@ -237,19 +306,21 @@ fn main() {
     //the alternative is to check for existing color in tile, and blend manually, or even statically
     gfx.enable_alpha_blend();
 
-    let mut tile_size = TILE_SIZE;//changes if window is resized
+    let mut tile_size = INITIAL_TILE_SIZE;//changes if window is resized
 
     let mut game = Game::new();
     for e in window.events() {
         match e {
             Event::Render(render_args/*: RenderArgs*/) => {
-                let transform: Matrix2d = Context::new_viewport(render_args.viewport()).transform;
-                //update if window has been resized, else weird thing would happen
+                //update if window has been resized, else weird things would happen
                 //THANK YOU Arcterus/game-of-life/src/app.rs
                 &mut gfx.viewport(0, 0, render_args.width as i32, render_args.height as i32);
                 //TODO: center letterboxing
 
-                game.render(tile_size, transform, &mut gfx);
+                let context: Context = Context::new_viewport(render_args.viewport()).scale(tile_size, tile_size);
+                let transform: Matrix2d = context.transform;
+
+                game.render(context.draw_state, transform, &mut gfx);
             }
             Event::Update(update_args) => {
                 game.update(update_args.dt);//deltatime is its only field
@@ -276,9 +347,8 @@ fn main() {
                 }
                 game.mouse_move(pos);
             }
-            Event::Input(Input::Focus(false)) => {//a click outsidde the window
-                game.mouse_move(None);//best we can do on detecting mouse leaving window
-                //see https://github.com/PistonDevelopers/piston/issues/962
+            Event::Input(Input::Cursor(_)) => {//only happens if a button is pressed
+                game.mouse_move(None);
             }
             _ => {}
         }
