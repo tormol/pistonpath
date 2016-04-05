@@ -287,6 +287,7 @@ use piston::window::WindowSettings;
 use piston::event_loop::{Events,WindowEvents};
 use piston::input::{Button, Motion, Event, Input, RenderEvent};
 use opengl_graphics::OpenGL;
+use graphics::draw_state::Blend;
 
 extern crate piston_window;
 use piston_window::PistonWindow;
@@ -304,7 +305,7 @@ fn main() {
     //by default alpha blending is disabled, which means all semi-transparent colors are considered opaque.
     //since colors are blended pixel for pixel, this has a performance cost,
     //the alternative is to check for existing color in tile, and blend manually, or even statically
-    gfx.enable_alpha_blend();
+    // gfx.enable_alpha_blend();
 
     let mut tile_size = INITIAL_TILE_SIZE;//changes if window is resized
 
@@ -320,6 +321,7 @@ fn main() {
 
                 let context: Context = Context::new_viewport(render_args.viewport()).scale(tile_size, tile_size);
                 let transform: Matrix2d = context.transform;
+                context.draw_state.blend(Blend::Alpha);
 
                 game.render(context.draw_state, transform, &mut gfx);
             }
