@@ -13,6 +13,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
+#![allow(non_snake_case)]
 const FONT_PATH: &'static str = "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 const FONT_RESOLUTION: f64 = 100.0;
 const BORDER_RADIUS: f64 = 0.03;//where 1 is tile_size
