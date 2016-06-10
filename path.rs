@@ -25,44 +25,29 @@ const BOARD_WIDTH: i32 = 20;
 const BOARD_HEIGHT: i32 = 15;
 const UPDATE_TIME: f64 = 0.20;
 
+
+use std::ops::Neg;
+extern crate num;
+use num::{Zero,One,ToPrimitive};
 extern crate vecmath;
-use vecmath::Vector2;
+use vecmath::{Vector2,vec2_add};// Vector2 is [T; 2]
 extern crate graphics;
-use graphics::math::{Vec2d, Matrix2d, Scalar};
-
-type Point = Vector2<i32>;// Vector2 is [T; 2]
-trait Intpointadd {
-    fn plus(&self, other:Point) -> Point;//coherence rules means we cant implement Add :|
-}
-impl Intpointadd for Point {
-    fn plus(&self, other:Point) -> Point {
-        [self.x()+other.x(), self.y()+other.y()]
-    }
-}
-trait Point2<T> {
-    fn x(&self) -> T;
-    fn y(&self) -> T;
-}
-impl Point2<i32> for Point {
-    fn x(&self) -> i32 {self[0]}
-    fn y(&self) -> i32 {self[1]}
-}
-
-impl Point2<Scalar> for Vec2d {
-    fn x(&self) -> Scalar {self[0]}
-    fn y(&self) -> Scalar {self[1]}
-}
+use graphics::math::Matrix2d;
+use graphics::{Context,DrawState,Transformed,color,math};
+use graphics::types::Color;
 
 
 #[derive(PartialEq, Copy, Clone)]
 enum Direction {North, South, East, West,}
 impl Direction {
-    fn unit_vector(&self) -> Point { match *self {
-        Direction::North => [ 0,  1],
-        Direction::South => [ 0, -1],
-        Direction::East  => [ 1,  0],
-        Direction::West  => [-1,  0],
-    }}
+    fn unit_vector<T:Zero+One+Neg<Output=T>> (&self) -> [T; 2] {
+        match *self {
+            Direction::North => [T::zero(),       T::one()      ],
+            Direction::South => [T::zero(),       T::one().neg()],
+            Direction::East  => [T::one(),        T::zero()     ],
+            Direction::West  => [T::one().neg(),  T::zero()     ],
+        }
+    }
 }
 
 #[derive(PartialEq, Copy, Clone)]
@@ -86,27 +71,25 @@ impl Tile {
     }}
 }
 
-use graphics::{Context,DrawState,Transformed,color,math};
-use graphics::types::Color;
 use std::cmp;
+use std::collections::vec_deque::VecDeque;
 
 extern crate piston;
 use piston::input::keyboard::Key;
 use piston::input::mouse::MouseButton;
-
 extern crate opengl_graphics;
 use opengl_graphics::GlGraphics;
 use opengl_graphics::glyph_cache::GlyphCache;
-
 extern crate rand;
+use rand::Rng;
 
 type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 struct Game {
     board: Board,
     movers: Vec<Vector2<f64>>,
-    target: Option<Point>,
-    mouse_pos: Option<Point>,
-    selection_start: Option<Point>,
+    target: Option<[i32; 2]>,
+    mouse_pos: Option<[i32; 2]>,
+    selection_start: Option<[i32; 2]>,
     paused: bool,
     time: f64,
     update_time: f64,
@@ -135,15 +118,13 @@ struct Game {
     }
 
     //in the returned pair, first,x<=second.x and first.y<=second.y, now they can be uused in a loop or draw
-    fn order_points(a:Point, b:Point) -> (Point,Point) {
-        ([cmp::min(a.x(), b.x()),  cmp::min(a.y(), b.y())],
-         [cmp::max(a.x(), b.x()),  cmp::max(a.y(), b.y())])
+    fn order_points(a:[i32; 2], b:[i32; 2]) -> ([i32; 2],[i32; 2]) {
+        ([cmp::min(a[0], b[0]),  cmp::min(a[1], b[1])],
+         [cmp::max(a[0], b[0]),  cmp::max(a[1], b[1])])
     }
 
     fn render(&mut self,  draw_state: DrawState,  transform: math::Matrix2d, gfx: &mut GlGraphics) {
-        //use graphics::rectangle;
-        extern crate num;
-        fn to_f64_4<T: num::ToPrimitive>(a:T, b:T, c:T, d:T) -> [f64; 4] {
+        fn to_f64_4<T: ToPrimitive>(a:T, b:T, c:T, d:T) -> [f64; 4] {
             [a.to_f64().unwrap(), b.to_f64().unwrap(), c.to_f64().unwrap(), d.to_f64().unwrap()]
         }
 
@@ -185,13 +166,13 @@ struct Game {
             //selection
             if let Some(start) = self.selection_start {
                 let (a,b) = Game::order_points(start, mouse_pos);
-                let rect = to_f64_4(a.x(), a.y(),  b.x()-a.x()+1, b.y()-a.y()+1);
+                let rect = to_f64_4(a[0], a[1],  b[0]-a[0]+1, b[1]-a[1]+1);
                 let selection_color = [1.0, 1.0, 1.0, 0.2];//white
                 graphics::rectangle(selection_color, rect, transform, gfx);
             }
             //hover
             let mouse_color = [0.9, 1.0, 0.9, 0.1];//light green
-            graphics::rectangle(mouse_color,  to_f64_4(mouse_pos.x(), mouse_pos.y(), 1, 1),  transform,  gfx);
+            graphics::rectangle(mouse_color,  to_f64_4(mouse_pos[0], mouse_pos[1], 1, 1),  transform,  gfx);
         }
 
         //border lines
@@ -219,13 +200,11 @@ struct Game {
             let m = self.movers[i];
             match self.board[m[1] as usize][m[0] as usize] {
                 Open(Some(path)) => {// move along
-                    let d = path.next.unit_vector();
-                    self.movers[i] = [m[0]+d[0] as f64, m[1]+d[1] as f64];
+                    self.movers[i] = vec2_add(m, path.next.unit_vector());
                 },
                 Open(None) => {// jitter randomly
-                    use rand::Rng;
                     let min = [(m[0] as i32)as f64, (m[1] as i32)as f64];
-                    let max = [min[0]+0.6, min[1]+0.6];
+                    let max = vec2_add(min, [0.6,0.6]);
                     // returns [0,1), if positions seems to decrease, use Open01
                     let x = m[0] + rand::thread_rng().next_f64() - 0.5;
                     let y = m[1] + rand::thread_rng().next_f64() - 0.5;
@@ -253,20 +232,19 @@ struct Game {
 
     fn update_paths(&mut self) {
         //reset all
-        for row in &mut self.board {
-            for tile in &mut row.iter_mut() {
-                if let Open(Some(_)) = *tile {
-                    *tile = Open(None);
-        }   }   }
+        for tile in self.board.iter_mut().flat_map(|row| row.iter_mut() ) {
+            if let Open(Some(_)) = *tile {
+                *tile = Open(None);
+            }
+        }
 
         if let Some(target) = self.target {
-            use std::collections::vec_deque::VecDeque;
             use Direction::*;
 
-            fn go<'a>(board: &'a mut Board,  p: Point,  from_dist: i32,  from_dir: Direction) -> bool {
-                if p.x()>=0  &&  p.x()<BOARD_WIDTH
-                && p.y()>=0  &&  p.y()<BOARD_HEIGHT {
-                    let tile = &mut board[p.y()as usize][p.x()as usize];
+            fn go<'a>(board: &'a mut Board,  p: [i32; 2],  from_dist: i32,  from_dir: Direction) -> bool {
+                if p[0]>=0  &&  p[0]<BOARD_WIDTH
+                && p[1]>=0  &&  p[1]<BOARD_HEIGHT {
+                    let tile = &mut board[p[1]as usize][p[0]as usize];
                     if let Open(to_path) = *tile {
                         let default_path = Path{distance: std::i32::MAX,  next: North};
                         if from_dist < to_path.unwrap_or(default_path).distance {
@@ -279,20 +257,20 @@ struct Game {
                 } else {false}
             }
 
-            let mut to_check : VecDeque<(Point, i32, Direction)> = VecDeque::new();
+            let mut to_check : VecDeque<([i32; 2], i32, Direction)> = VecDeque::new();
             to_check.push_back((target, 0, South));
             while let Some((from_pos, from_dist, from_dir)) = to_check.pop_front() {
                 if go(&mut self.board,  from_pos,  from_dist, from_dir) {
-                    to_check.push_back((from_pos.plus(North.unit_vector()), from_dist+1, South));
-                    to_check.push_back((from_pos.plus(South.unit_vector()), from_dist+1, North));
-                    to_check.push_back((from_pos.plus( West.unit_vector()), from_dist+1,  East));
-                    to_check.push_back((from_pos.plus( East.unit_vector()), from_dist+1,  West));
+                    to_check.push_back((vec2_add(from_pos, North.unit_vector()), from_dist+1, South));
+                    to_check.push_back((vec2_add(from_pos, South.unit_vector()), from_dist+1, North));
+                    to_check.push_back((vec2_add(from_pos, West.unit_vector()), from_dist+1,  East));
+                    to_check.push_back((vec2_add(from_pos, East.unit_vector()), from_dist+1,  West));
                 }
             }
         }
     }
 
-    fn mouse_move(&mut self,  pos: Option<Point>) {
+    fn mouse_move(&mut self,  pos: Option<[i32; 2]>) {
         self.mouse_pos = pos;
         if pos.is_none() {
             self.selection_start = None;
@@ -310,24 +288,24 @@ struct Game {
                 if let Some(start) = self.selection_start {
                     self.selection_start = None;
 
-                    let from = self.board[start.y() as usize][start.x() as usize];
+                    let from = self.board[start[1] as usize][start[0] as usize];
                     let set = match from {Open(_)=>{Wall} Wall=>{Open(None)} Target=>{return}};
 
                     let (first, second) = Game::order_points(start, end);
-                    for row in &mut self.board[first.y()as usize .. 1+second.y()as usize] {
-                        for tile in &mut row[first.x()as usize .. 1+second.x()as usize].iter_mut() {
-                            if *tile != Target {
-                                *tile = set;
-            }   }   }   }   }
+                    for tile in self.board[first[1]as usize .. 1+second[1]as usize].iter_mut()
+                                    .flat_map(|row| row[first[0]as usize .. 1+second[0]as usize].iter_mut() )
+                                    .filter(|tile| **tile != Target ) {
+                        *tile = set;
+            }   }   }
             (MouseButton::Right, Some(pos))  =>  {
                 let mut set = true;
                 if let Some(target) = self.target {
-                    self.board[target.y() as usize][target.x() as usize] = Open(None);
+                    self.board[target[1] as usize][target[0] as usize] = Open(None);
                     self.target = None;
                     set = pos != target;
                 }
                 if set {
-                    self.board[pos.y() as usize][pos.x() as usize] = Target;
+                    self.board[pos[1] as usize][pos[0] as usize] = Target;
                     self.target = Some(pos);
                 }
             }
@@ -404,8 +382,8 @@ fn main() {
             Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
                 let tile = [(x/ tile_size) as i32, (y/ tile_size) as i32];
                 let mut pos = None;
-                if tile.x() >= 0  &&  tile.x() < BOARD_WIDTH as i32
-                && tile.y() >= 0  &&  tile.y() < BOARD_HEIGHT as i32 {
+                if tile[0] >= 0  &&  tile[0] < BOARD_WIDTH as i32
+                && tile[1] >= 0  &&  tile[1] < BOARD_HEIGHT as i32 {
                     pos = Some(tile)
                 }
                 game.mouse_move(pos);
