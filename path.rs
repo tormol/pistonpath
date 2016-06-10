@@ -338,7 +338,7 @@ struct Game {
 
     fn key_press(&mut self,  key: Key) {
         if key == Key::P {
-            self.paused != self.paused;
+            self.paused = !self.paused;
         }
     }
 }
@@ -353,7 +353,7 @@ extern crate piston_window;
 use piston_window::PistonWindow;
 
 fn main() {
-    println!("P => Pause");
+    println!("Press p to pause");
 
     let mut window: PistonWindow =
         WindowSettings::new("PistonPath", [
