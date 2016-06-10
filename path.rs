@@ -23,7 +23,7 @@ const INITIAL_TILE_SIZE: f64 = 50.0;
 
 const BOARD_WIDTH: i32 = 20;
 const BOARD_HEIGHT: i32 = 15;
-const UPDATE_TIME: f64 = 0.15;
+const UPDATE_TIME: f64 = 0.20;
 
 extern crate vecmath;
 use vecmath::Vector2;
@@ -98,10 +98,12 @@ extern crate opengl_graphics;
 use opengl_graphics::GlGraphics;
 use opengl_graphics::glyph_cache::GlyphCache;
 
+extern crate rand;
+
 type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 struct Game {
     board: Board,
-    mover: Point,
+    movers: Vec<Vector2<f64>>,
     target: Option<Point>,
     mouse_pos: Option<Point>,
     selection_start: Option<Point>,
@@ -112,17 +114,24 @@ struct Game {
     res_character_cache: GlyphCache<'static>,
 } impl Game {
     fn new() -> Game {
-        Game {
+        let mut g = Game {
             res_character_cache: GlyphCache::new(std::path::Path::new(FONT_PATH)).unwrap(),
             time: 0.0,
             update_time: 0.0,
             paused: false,
             selection_start: None,
             mouse_pos: None,
-            target: None,
-            mover: [1,1],
+            target: Some([BOARD_WIDTH/2, BOARD_HEIGHT/2]),
+            movers: Vec::with_capacity(4),
             board: [[Tile::Open(None); BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
-        }
+        };
+        g.board[BOARD_HEIGHT as usize/2][BOARD_WIDTH as usize/2] = Target;
+        g.update_paths();
+        g.movers.push([0.3,0.3]);
+        g.movers.push([0.3, BOARD_HEIGHT as f64-0.7]);
+        g.movers.push([BOARD_WIDTH as f64-0.7, 0.3]);
+        g.movers.push([BOARD_WIDTH as f64-0.7, BOARD_HEIGHT as f64-0.7]);
+        return g;
     }
 
     //in the returned pair, first,x<=second.x and first.y<=second.y, now they can be uused in a loop or draw
@@ -161,13 +170,15 @@ struct Game {
                     graphics::text::Text::new_color(Target.color(), FONT_RESOLUTION as u32)
                         .draw(as_str, &mut self.res_character_cache, &draw_state, char_pos, gfx);
                 }
-                if self.mover.x() == x_usize as i32
-                && self.mover.y() == y_usize as i32 {
-                    let red = color::hex("ee2222");
-                    let posdim = [x+0.3,y+0.3,0.4,0.4];
-                    graphics::rectangle(red, posdim, transform, gfx);
-                }
             }
+        }
+        for p in self.movers.iter() {
+            let red = color::hex("ee2222");
+            let brown = color::hex("330000");
+            let border = [p[0],p[1],0.4,0.4];
+            let main = [p[0]+0.05,p[1]+0.05,0.3,0.3];
+            graphics::rectangle(brown, border, transform, gfx);
+            graphics::rectangle(red, main, transform, gfx);
         }
 
         if let Some(mouse_pos) = self.mouse_pos {
@@ -202,9 +213,41 @@ struct Game {
             return;
         }
         self.time = self.update_time;
-        let m = self.mover;
-        if let Open(Some(path)) = self.board[m.y() as usize][m.x() as usize] {
-            self.mover = m.plus(path.next.unit_vector());
+        let mut i = 0;
+        let mut len = self.movers.len();// Don't increase when I add new
+        while i < len {
+            let m = self.movers[i];
+            match self.board[m[1] as usize][m[0] as usize] {
+                Open(Some(path)) => {// move along
+                    let d = path.next.unit_vector();
+                    self.movers[i] = [m[0]+d[0] as f64, m[1]+d[1] as f64];
+                },
+                Open(None) => {// jitter randomly
+                    use rand::Rng;
+                    let min = [(m[0] as i32)as f64, (m[1] as i32)as f64];
+                    let max = [min[0]+0.6, min[1]+0.6];
+                    // returns [0,1), if positions seems to decrease, use Open01
+                    let x = m[0] + rand::thread_rng().next_f64() - 0.5;
+                    let y = m[1] + rand::thread_rng().next_f64() - 0.5;
+                    if x >= min[0]  &&  x <= max[0] {
+                        self.movers[i][0] = x;
+                    }
+                    if y >= min[1]  &&  y <= max[1] {
+                        self.movers[i][1] = y;
+                    }
+                },
+                Wall => {// remove
+                    let last = self.movers.pop().unwrap();
+                    if i != len-1 {
+                        self.movers[i] = last;
+                    }
+                    len -= 1;
+                    i = i.wrapping_sub(1);
+                },
+                Target if len < 200 => self.movers.push(m),// clone
+                Target => {},
+            }
+            i = i.wrapping_add(1);
         }
     }
 
