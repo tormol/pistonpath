@@ -30,7 +30,7 @@ use vecmath::Vector2;
 extern crate graphics;
 use graphics::math::{Vec2d, Matrix2d, Scalar};
 
-type Point = Vector2<i32>;
+type Point = Vector2<i32>;// Vector2 is [T; 2]
 trait Intpointadd {
     fn plus(&self, other:Point) -> Point;//coherence rules means we cant implement Add :|
 }
@@ -101,6 +101,7 @@ use opengl_graphics::glyph_cache::GlyphCache;
 type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 struct Game {
     board: Board,
+    mover: Point,
     target: Option<Point>,
     mouse_pos: Option<Point>,
     selection_start: Option<Point>,
@@ -113,12 +114,13 @@ struct Game {
     fn new() -> Game {
         Game {
             res_character_cache: GlyphCache::new(std::path::Path::new(FONT_PATH)).unwrap(),
-            time: UPDATE_TIME,
-            update_time: UPDATE_TIME,
+            time: 0.0,
+            update_time: 0.0,
             paused: false,
             selection_start: None,
             mouse_pos: None,
             target: None,
+            mover: [1,1],
             board: [[Tile::Open(None); BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
         }
     }
@@ -159,6 +161,12 @@ struct Game {
                     graphics::text::Text::new_color(Target.color(), FONT_RESOLUTION as u32)
                         .draw(as_str, &mut self.res_character_cache, &draw_state, char_pos, gfx);
                 }
+                if self.mover.x() == x_usize as i32
+                && self.mover.y() == y_usize as i32 {
+                    let red = color::hex("ee2222");
+                    let posdim = [x+0.3,y+0.3,0.4,0.4];
+                    graphics::rectangle(red, posdim, transform, gfx);
+                }
             }
         }
 
@@ -189,7 +197,15 @@ struct Game {
         if self.paused {
             return;
         }
-        self.time += dt;
+        self.update_time += dt;
+        if self.update_time-self.time < UPDATE_TIME {
+            return;
+        }
+        self.time = self.update_time;
+        let m = self.mover;
+        if let Open(Some(path)) = self.board[m.y() as usize][m.x() as usize] {
+            self.mover = m.plus(path.next.unit_vector());
+        }
     }
 
     fn update_paths(&mut self) {
