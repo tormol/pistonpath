@@ -30,7 +30,12 @@ use std::ops::Neg;
 extern crate num;
 use num::{Zero,One,ToPrimitive};
 extern crate vecmath;
-use vecmath::{vec2_add};// Vector2 is [T; 2]
+use vecmath::vec2_add;// Vector2 is [T; 2]
+// Why not +?
+// Any math library in rust have to make a choice: Either use primitive slices or tuples
+// which make constructing and destructuring pain-free, or use std::ops::*.
+// Rusts coherence rules prevents them for doing both:
+// You cannot implement an external trait for a foreign type.
 extern crate graphics;
 use graphics::math::Matrix2d;
 use graphics::{Context,DrawState,Transformed,color,math};
@@ -90,7 +95,7 @@ type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 // Contains the game logic
 struct Game {
     board: Board,
-    drones: Vec<Vector2<f64>>,
+    drones: Vec<[f64; 2]>,
     target: Option<[i32; 2]>,
     mouse_pos: Option<[i32; 2]>,
     selection_start: Option<[i32; 2]>,
@@ -204,6 +209,11 @@ struct Game {
             return;
         }
         self.time = self.update_time;
+
+        // This is a (probably premature) optimization to reuse self.drones
+        // and avoid allocating and freing every time.
+        // The functional approach would be to iterate, map into a vector with
+        // lengt 0, 1 or 2, flat_map() and then collect().
         let mut i = 0;
         let mut len = self.drones.len();// Don't increase when I add new
         while i < len {
