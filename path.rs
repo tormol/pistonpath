@@ -30,7 +30,7 @@ use std::ops::Neg;
 extern crate num;
 use num::{Zero,One,ToPrimitive};
 extern crate vecmath;
-use vecmath::{Vector2,vec2_add};// Vector2 is [T; 2]
+use vecmath::{vec2_add};// Vector2 is [T; 2]
 extern crate graphics;
 use graphics::math::Matrix2d;
 use graphics::{Context,DrawState,Transformed,color,math};
@@ -38,17 +38,20 @@ use graphics::types::Color;
 
 
 #[derive(PartialEq, Copy, Clone)]
-enum Direction {North, South, East, West,}
+enum Direction {North, South, East, West}
+use self::Direction::*;
 impl Direction {
+    /// Is generic so it can produce both floats and integers
     fn unit_vector<T:Zero+One+Neg<Output=T>> (&self) -> [T; 2] {
         match *self {
-            Direction::North => [T::zero(),       T::one()      ],
-            Direction::South => [T::zero(),       T::one().neg()],
-            Direction::East  => [T::one(),        T::zero()     ],
-            Direction::West  => [T::one().neg(),  T::zero()     ],
+            North => [T::zero(),       T::one()      ],
+            South => [T::zero(),       T::one().neg()],
+            East  => [T::one(),        T::zero()     ],
+            West  => [T::one().neg(),  T::zero()     ],
         }
     }
 }
+
 
 #[derive(PartialEq, Copy, Clone)]
 struct Path {
@@ -84,9 +87,10 @@ extern crate rand;
 use rand::Rng;
 
 type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
+// Contains the game logic
 struct Game {
     board: Board,
-    movers: Vec<Vector2<f64>>,
+    drones: Vec<Vector2<f64>>,
     target: Option<[i32; 2]>,
     mouse_pos: Option<[i32; 2]>,
     selection_start: Option<[i32; 2]>,
@@ -105,25 +109,27 @@ struct Game {
             selection_start: None,
             mouse_pos: None,
             target: Some([BOARD_WIDTH/2, BOARD_HEIGHT/2]),
-            movers: Vec::with_capacity(4),
+            drones: Vec::with_capacity(4),
             board: [[Tile::Open(None); BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
         };
         g.board[BOARD_HEIGHT as usize/2][BOARD_WIDTH as usize/2] = Target;
         g.update_paths();
-        g.movers.push([0.3,0.3]);
-        g.movers.push([0.3, BOARD_HEIGHT as f64-0.7]);
-        g.movers.push([BOARD_WIDTH as f64-0.7, 0.3]);
-        g.movers.push([BOARD_WIDTH as f64-0.7, BOARD_HEIGHT as f64-0.7]);
+        // put a drone in each corner
+        g.drones.push([0.3,0.3]);
+        g.drones.push([0.3, BOARD_HEIGHT as f64-0.7]);
+        g.drones.push([BOARD_WIDTH as f64-0.7, 0.3]);
+        g.drones.push([BOARD_WIDTH as f64-0.7, BOARD_HEIGHT as f64-0.7]);
         return g;
     }
 
-    //in the returned pair, first,x<=second.x and first.y<=second.y, now they can be uused in a loop or draw
+    /// In the returned pair, first[0]<=second[0] and first[1]<=second[1],
+    /// now they can be uused in a loop or draw
     fn order_points(a:[i32; 2], b:[i32; 2]) -> ([i32; 2],[i32; 2]) {
         ([cmp::min(a[0], b[0]),  cmp::min(a[1], b[1])],
          [cmp::max(a[0], b[0]),  cmp::max(a[1], b[1])])
     }
 
-    fn render(&mut self,  draw_state: DrawState,  transform: math::Matrix2d, gfx: &mut GlGraphics) {
+    fn render(&mut self,  draw_state: DrawState,  transform: math::Matrix2d,  gfx: &mut GlGraphics) {
         fn to_f64_4<T: ToPrimitive>(a:T, b:T, c:T, d:T) -> [f64; 4] {
             [a.to_f64().unwrap(), b.to_f64().unwrap(), c.to_f64().unwrap(), d.to_f64().unwrap()]
         }
@@ -136,6 +142,7 @@ struct Game {
                 let (x,y) = (x_usize as f64, y_usize as f64);
                 graphics::rectangle(tile.color(), [x,y,1.0,1.0], transform, gfx);
                 if let Open(Some(path)) = *tile {
+                    // number rendering
                     let as_str: &str = &path.distance.to_string()[..];//[..] converts String to str
                     let digits = as_str.len() as f64;//digits aren't unicode
                     let digit_height = 0.8;
@@ -153,7 +160,9 @@ struct Game {
                 }
             }
         }
-        for p in self.movers.iter() {
+
+        // drones
+        for p in &self.drones {
             let red = color::hex("ee2222");
             let brown = color::hex("330000");
             let border = [p[0],p[1],0.4,0.4];
@@ -162,6 +171,7 @@ struct Game {
             graphics::rectangle(red, main, transform, gfx);
         }
 
+        // hover highlight and selection
         if let Some(mouse_pos) = self.mouse_pos {
             //selection
             if let Some(start) = self.selection_start {
@@ -195,12 +205,12 @@ struct Game {
         }
         self.time = self.update_time;
         let mut i = 0;
-        let mut len = self.movers.len();// Don't increase when I add new
+        let mut len = self.drones.len();// Don't increase when I add new
         while i < len {
-            let m = self.movers[i];
+            let m = self.drones[i];
             match self.board[m[1] as usize][m[0] as usize] {
                 Open(Some(path)) => {// move along
-                    self.movers[i] = vec2_add(m, path.next.unit_vector());
+                    self.drones[i] = vec2_add(m, path.next.unit_vector());
                 },
                 Open(None) => {// jitter randomly
                     let min = [(m[0] as i32)as f64, (m[1] as i32)as f64];
@@ -209,27 +219,28 @@ struct Game {
                     let x = m[0] + rand::thread_rng().next_f64() - 0.5;
                     let y = m[1] + rand::thread_rng().next_f64() - 0.5;
                     if x >= min[0]  &&  x <= max[0] {
-                        self.movers[i][0] = x;
+                        self.drones[i][0] = x;
                     }
                     if y >= min[1]  &&  y <= max[1] {
-                        self.movers[i][1] = y;
+                        self.drones[i][1] = y;
                     }
                 },
                 Wall => {// remove
-                    let last = self.movers.pop().unwrap();
+                    let last = self.drones.pop().unwrap();
                     if i != len-1 {
-                        self.movers[i] = last;
+                        self.drones[i] = last;
                     }
                     len -= 1;
                     i = i.wrapping_sub(1);
                 },
-                Target if len < 200 => self.movers.push(m),// clone
-                Target => {},
+                Target if len < 200 => self.drones.push(m),// clone
+                Target => {/*else it gets slow quickly*/},
             }
             i = i.wrapping_add(1);
         }
     }
 
+    /// Recalculates the numbers when you change the destination.
     fn update_paths(&mut self) {
         //reset all
         for tile in self.board.iter_mut().flat_map(|row| row.iter_mut() ) {
@@ -239,9 +250,9 @@ struct Game {
         }
 
         if let Some(target) = self.target {
-            use Direction::*;
-
-            fn go<'a>(board: &'a mut Board,  p: [i32; 2],  from_dist: i32,  from_dir: Direction) -> bool {
+            fn go(board: &mut Board,  p: [i32; 2],
+                  from_dist: i32,  from_dir: Direction)
+            -> bool {
                 if p[0]>=0  &&  p[0]<BOARD_WIDTH
                 && p[1]>=0  &&  p[1]<BOARD_HEIGHT {
                     let tile = &mut board[p[1]as usize][p[0]as usize];
@@ -272,7 +283,7 @@ struct Game {
 
     fn mouse_move(&mut self,  pos: Option<[i32; 2]>) {
         self.mouse_pos = pos;
-        if pos.is_none() {
+        if pos.is_none() {// left the window
             self.selection_start = None;
         }
     }
@@ -323,13 +334,14 @@ struct Game {
 
 use piston::window::WindowSettings;
 use piston::event_loop::{Events,WindowEvents};
-use piston::input::{Button, Motion, Event, Input, RenderEvent};
+use piston::input::{Button, Motion, Event, Input};
 use opengl_graphics::OpenGL;
 use graphics::draw_state::Blend;
 
 extern crate piston_window;
 use piston_window::PistonWindow;
 
+// Handles setup, resize and uconverting mouse coordinates to tile coordinates.
 fn main() {
     println!("Press p to pause");
 
@@ -340,10 +352,6 @@ fn main() {
             ]).exit_on_esc(true).build().unwrap();
 
     let mut gfx = GlGraphics::new(OpenGL::V3_2);
-    //by default alpha blending is disabled, which means all semi-transparent colors are considered opaque.
-    //since colors are blended pixel for pixel, this has a performance cost,
-    //the alternative is to check for existing color in tile, and blend manually, or even statically
-    // gfx.enable_alpha_blend();
 
     let mut tile_size = INITIAL_TILE_SIZE;//changes if window is resized
 
@@ -354,11 +362,16 @@ fn main() {
             Event::Render(render_args/*: RenderArgs*/) => {
                 //update if window has been resized, else weird things would happen
                 //THANK YOU Arcterus/game-of-life/src/app.rs
-                &mut gfx.viewport(0, 0, render_args.width as i32, render_args.height as i32);
+                gfx.viewport(0, 0, render_args.width as i32, render_args.height as i32);
                 //TODO: center letterboxing
 
-                let context: Context = Context::new_viewport(render_args.viewport()).scale(tile_size, tile_size);
+                let context: Context = Context::new_viewport(render_args.viewport())
+                                               .scale(tile_size, tile_size);
                 let transform: Matrix2d = context.transform;
+
+                //by default alpha blending is disabled, which means all semi-transparent colors are considered opaque.
+                //since colors are blended pixel for pixel, this has a performance cost,
+                //the alternative is to check for existing color in tile, and blend manually, or even statically
                 context.draw_state.blend(Blend::Alpha);
 
                 game.render(context.draw_state, transform, &mut gfx);
@@ -391,6 +404,7 @@ fn main() {
             Event::Input(Input::Cursor(_)) => {//only happens if a button is pressed
                 game.mouse_move(None);
             }
+
             _ => {}
         }
     }
