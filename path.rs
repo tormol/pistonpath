@@ -365,17 +365,13 @@ fn main() {
     let mut gfx = GlGraphics::new(OpenGL::V3_2);
 
     let mut tile_size = INITIAL_TILE_SIZE;//changes if window is resized
+    let mut offset = [0.0; 2];//letterboxing after resize
 
     let mut game = Game::new();
     let mut event_loop: WindowEvents = window.events();
     while let Some(e) = event_loop.next(&mut window) {
         match e {
             Event::Render(render_args/*: RenderArgs*/) => {
-                //update if window has been resized, else weird things would happen
-                //THANK YOU Arcterus/game-of-life/src/app.rs
-                gfx.viewport(0, 0, render_args.width as i32, render_args.height as i32);
-                //TODO: center letterboxing
-
                 let context: Context = Context::new_viewport(render_args.viewport())
                                                .scale(tile_size, tile_size);
                 let transform: Matrix2d = context.transform;
@@ -400,15 +396,22 @@ fn main() {
             Event::Input(Input::Release(Button::Mouse(button))) => {
                 game.mouse_release(button);
             }
-            Event::Input(Input::Resize(x,y)) => {
-                tile_size = f64::min( x as f64 / (BOARD_WIDTH as f64),  y as f64 / (BOARD_HEIGHT as f64));
+            Event::Input(Input::Resize(x,y)) => {/*x and y are u32*/
+                tile_size = f64::min(x as f64 / (BOARD_WIDTH as f64),
+                                     y as f64 / (BOARD_HEIGHT as f64));
+                offset = [(x as f64 - tile_size*BOARD_WIDTH as f64) / 2.0,
+                          (y as f64 - tile_size*BOARD_HEIGHT as f64) / 2.0];
+                gfx.viewport(offset[0] as i32, -offset[1] as i32, x as i32, y as i32);
+                // I don't know *why* the vertical offset has to be negative.
             }
             Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
-                let tile = [(x/ tile_size) as i32, (y/ tile_size) as i32];
                 let mut pos = None;
-                if tile[0] >= 0  &&  tile[0] < BOARD_WIDTH as i32
-                && tile[1] >= 0  &&  tile[1] < BOARD_HEIGHT as i32 {
-                    pos = Some(tile)
+                // compare floats to avoid rounding at the edges
+                let x = (x - offset[0]) / tile_size;
+                let y = (y - offset[1]) / tile_size;
+                if x >= 0.0  &&  x < BOARD_WIDTH as f64
+                && y >= 0.0  &&  y < BOARD_HEIGHT as f64 {
+                    pos = Some([x as i32, y as i32]);
                 }
                 game.mouse_move(pos);
             }
