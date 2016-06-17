@@ -379,14 +379,12 @@ fn main() {
                 let context: Context = Context::new_viewport(render_args.viewport())
                                                .trans(offset[0], offset[1])
                                                .scale(tile_size, tile_size);
-                let transform: Matrix2d = context.transform;
-
                 //by default alpha blending is disabled, which means all semi-transparent colors are considered opaque.
                 //since colors are blended pixel for pixel, this has a performance cost,
                 //the alternative is to check for existing color in tile, and blend manually, or even statically
                 context.draw_state.blend(Blend::Alpha);
 
-                game.render(context.draw_state, transform, &mut gfx);
+                game.render(context.draw_state, context.transform, &mut gfx);
             }
             Event::Update(update_args) => {
                 game.update(update_args.dt);//deltatime is its only field
