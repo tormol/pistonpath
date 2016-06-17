@@ -117,15 +117,16 @@ struct Game {
             drones: Vec::with_capacity(4),
             board: [[Tile::Open(None); BOARD_WIDTH as usize]; BOARD_HEIGHT as usize],
         };
+        // set target position
         g.board[BOARD_HEIGHT as usize/2][BOARD_WIDTH as usize/2] = Target;
         g.update_paths();
-        // put a drone in each corner
-        g.drones.push([0.3,0.3]);
+        // put a drone in the center of each corner tile
+        g.drones.push([0.3, 0.3]);
         g.drones.push([0.3, BOARD_HEIGHT as f64-0.7]);
         g.drones.push([BOARD_WIDTH as f64-0.7, 0.3]);
         g.drones.push([BOARD_WIDTH as f64-0.7, BOARD_HEIGHT as f64-0.7]);
-        return g;
-    }
+        return g;// Just `g` would do, but to me looks unfinished below `g.something`.
+    }            // like I forgot to write the rest of the function.
 
     /// In the returned pair, first[0]<=second[0] and first[1]<=second[1],
     /// now they can be uused in a loop or draw
