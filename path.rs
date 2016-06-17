@@ -352,8 +352,12 @@ use graphics::draw_state::Blend;
 extern crate piston_window;
 use piston_window::PistonWindow;
 
-// Handles setup, resize and uconverting mouse coordinates to tile coordinates.
+// Handles setup, resize and converting mouse coordinates to tile coordinates.
 fn main() {
+    println!("Left click to move or remove tha yellow target.");
+    println!("Right click to place or remove walls.");
+    println!("(You can also select multiple tiles.)");
+    println!("");
     println!("Press p to pause");
 
     let mut window: PistonWindow =
@@ -373,6 +377,7 @@ fn main() {
         match e {
             Event::Render(render_args/*: RenderArgs*/) => {
                 let context: Context = Context::new_viewport(render_args.viewport())
+                                               .trans(offset[0], offset[1])
                                                .scale(tile_size, tile_size);
                 let transform: Matrix2d = context.transform;
 
@@ -401,8 +406,7 @@ fn main() {
                                      y as f64 / (BOARD_HEIGHT as f64));
                 offset = [(x as f64 - tile_size*BOARD_WIDTH as f64) / 2.0,
                           (y as f64 - tile_size*BOARD_HEIGHT as f64) / 2.0];
-                gfx.viewport(offset[0] as i32, -offset[1] as i32, x as i32, y as i32);
-                // I don't know *why* the vertical offset has to be negative.
+                gfx.viewport(0, 0, x as i32, y as i32);
             }
             Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
                 let mut pos = None;
