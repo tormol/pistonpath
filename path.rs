@@ -37,7 +37,6 @@ use vecmath::vec2_add;// Vector2 is [T; 2]
 // Rusts coherence rules prevents them for doing both:
 // You cannot implement an external trait for a foreign type.
 extern crate graphics;
-use graphics::math::Matrix2d;
 use graphics::{Context,DrawState,Transformed,color,math};
 use graphics::types::Color;
 
