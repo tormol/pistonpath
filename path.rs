@@ -343,8 +343,8 @@ struct Game {
 }
 
 use piston::window::WindowSettings;
-use piston::event_loop::{Events,WindowEvents};
-use piston::input::{Button, Motion, Event, Input};
+use piston::event_loop::Events;
+use piston::input::{Button, Motion, Input};
 use opengl_graphics::OpenGL;
 use graphics::draw_state::Blend;
 
@@ -371,10 +371,10 @@ fn main() {
     let mut offset = [0.0; 2];//letterboxing after resize
 
     let mut game = Game::new();
-    let mut event_loop: WindowEvents = window.events();
+    let mut event_loop: Events = window.events;
     while let Some(e) = event_loop.next(&mut window) {
         match e {
-            Event::Render(render_args/*: RenderArgs*/) => {
+            Input::Render(render_args/*: RenderArgs*/) => {
                 let context: Context = Context::new_viewport(render_args.viewport())
                                                .trans(offset[0], offset[1])
                                                .scale(tile_size, tile_size);
@@ -385,27 +385,27 @@ fn main() {
 
                 game.render(context.draw_state, context.transform, &mut gfx);
             }
-            Event::Update(update_args) => {
+            Input::Update(update_args) => {
                 game.update(update_args.dt);//deltatime is its only field
             }
 
-            Event::Input(Input::Press(Button::Keyboard(key))) => {
+            Input::Press(Button::Keyboard(key)) => {
                 game.key_press(key);
             }
-            Event::Input(Input::Press(Button::Mouse(button))) => {
+            Input::Press(Button::Mouse(button)) => {
                 game.mouse_press(button);
             }
-            Event::Input(Input::Release(Button::Mouse(button))) => {
+            Input::Release(Button::Mouse(button)) => {
                 game.mouse_release(button);
             }
-            Event::Input(Input::Resize(x,y)) => {/*x and y are u32*/
+            Input::Resize(x,y) => {/*x and y are u32*/
                 tile_size = f64::min(x as f64 / (BOARD_WIDTH as f64),
                                      y as f64 / (BOARD_HEIGHT as f64));
                 offset = [(x as f64 - tile_size*BOARD_WIDTH as f64) / 2.0,
                           (y as f64 - tile_size*BOARD_HEIGHT as f64) / 2.0];
                 gfx.viewport(0, 0, x as i32, y as i32);
             }
-            Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
+            Input::Move(Motion::MouseCursor(x,y)) => {
                 let mut pos = None;
                 // compare floats to avoid rounding at the edges
                 let x = (x - offset[0]) / tile_size;
@@ -416,7 +416,7 @@ fn main() {
                 }
                 game.mouse_move(pos);
             }
-            Event::Input(Input::Cursor(_)) => {//only happens if a button is pressed
+            Input::Cursor(_) => {//only happens if a button is pressed
                 game.mouse_move(None);
             }
 
