@@ -351,6 +351,8 @@ use graphics::draw_state::Blend;
 extern crate piston_window;
 use piston_window::PistonWindow;
 
+use std::time::Instant;
+
 // Handles setup, resize and converting mouse coordinates to tile coordinates.
 fn main() {
     println!("Left click to move or remove tha yellow target.");
@@ -371,10 +373,13 @@ fn main() {
     let mut offset = [0.0; 2];//letterboxing after resize
 
     let mut game = Game::new();
+    let mut frames = 0;
+    let started = Instant::now();
     let mut event_loop: Events = window.events;
     while let Some(e) = event_loop.next(&mut window) {
         match e {
             Input::Render(render_args/*: RenderArgs*/) => {
+                frames += 1;
                 let context: Context = Context::new_viewport(render_args.viewport())
                                                .trans(offset[0], offset[1])
                                                .scale(tile_size, tile_size);
@@ -423,4 +428,5 @@ fn main() {
             _ => {}
         }
     }
+    println!("fps: {}", frames / started.elapsed().as_secs());
 }
