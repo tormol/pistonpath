@@ -361,11 +361,15 @@ fn main() {
     println!("");
     println!("Press p to pause");
 
-    let mut window: PistonWindow =
-        WindowSettings::new("PistonPath", [
-                INITIAL_TILE_SIZE as u32  *  BOARD_WIDTH as u32,
-                INITIAL_TILE_SIZE as u32  *  BOARD_HEIGHT as u32
-            ]).exit_on_esc(true).build().unwrap();
+    let window_size = [
+        INITIAL_TILE_SIZE as u32  *  BOARD_WIDTH as u32,
+        INITIAL_TILE_SIZE as u32  *  BOARD_HEIGHT as u32
+    ];
+    let mut window: PistonWindow = WindowSettings::new("PistonPath", window_size)
+        .exit_on_esc(true)
+        .vsync(true)
+        .build()
+        .unwrap();
 
     let mut gfx = GlGraphics::new(OpenGL::V3_2);
 
