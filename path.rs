@@ -36,9 +36,9 @@ use vecmath::vec2_add;// Vector2 is [T; 2]
 // which make constructing and destructuring pain-free, or use std::ops::*.
 // Rusts coherence rules prevents them for doing both:
 // You cannot implement an external trait for a foreign type.
-extern crate graphics;
-use graphics::{Context,DrawState,Transformed,color,math};
-use graphics::types::Color;
+extern crate piston_window;
+use piston_window::{Context,DrawState,Transformed,color,math};
+use piston_window::types::Color;
 
 
 #[derive(PartialEq, Copy, Clone)]
@@ -81,9 +81,8 @@ impl Tile {
 use std::cmp;
 use std::collections::vec_deque::VecDeque;
 
-extern crate piston;
-use piston::input::keyboard::Key;
-use piston::input::mouse::MouseButton;
+use piston_window::keyboard::Key;
+use piston_window::mouse::MouseButton;
 extern crate opengl_graphics;
 use opengl_graphics::GlGraphics;
 use opengl_graphics::glyph_cache::GlyphCache;
@@ -139,13 +138,13 @@ struct Game {
             [a.to_f64().unwrap(), b.to_f64().unwrap(), c.to_f64().unwrap(), d.to_f64().unwrap()]
         }
 
-        graphics::clear(color::BLACK, gfx);//comment out and see!
+        piston_window::clear(color::BLACK, gfx);//comment out and see!
 
         //tiles
         for (y_usize,ref row) in self.board.into_iter().enumerate() {
             for (x_usize,tile) in row.into_iter().enumerate() {
                 let (x,y) = (x_usize as f64, y_usize as f64);
-                graphics::rectangle(tile.color(), [x,y,1.0,1.0], transform, gfx);
+                piston_window::rectangle(tile.color(), [x,y,1.0,1.0], transform, gfx);
                 if let Open(Some(path)) = *tile {
                     // number rendering
                     let as_str: &str = &path.distance.to_string()[..];//[..] converts String to str
@@ -160,7 +159,7 @@ struct Game {
                     let char_pos = transform
                         .trans(x + left_padding,  1.0 + y - bottom_padding)
                         .scale(scale_factor, scale_factor);
-                    graphics::text::Text::new_color(Target.color(), FONT_RESOLUTION as u32)
+                    piston_window::text::Text::new_color(Target.color(), FONT_RESOLUTION as u32)
                         .draw(as_str, &mut self.res_character_cache, &draw_state, char_pos, gfx);
                 }
             }
@@ -172,8 +171,8 @@ struct Game {
             let brown = color::hex("330000");
             let border = [p[0],p[1],0.4,0.4];
             let main = [p[0]+0.05,p[1]+0.05,0.3,0.3];
-            graphics::rectangle(brown, border, transform, gfx);
-            graphics::rectangle(red, main, transform, gfx);
+            piston_window::rectangle(brown, border, transform, gfx);
+            piston_window::rectangle(red, main, transform, gfx);
         }
 
         // hover highlight and selection
@@ -183,20 +182,20 @@ struct Game {
                 let (a,b) = Game::order_points(start, mouse_pos);
                 let rect = to_f64_4(a[0], a[1],  b[0]-a[0]+1, b[1]-a[1]+1);
                 let selection_color = [1.0, 1.0, 1.0, 0.2];//white
-                graphics::rectangle(selection_color, rect, transform, gfx);
+                piston_window::rectangle(selection_color, rect, transform, gfx);
             }
             //hover
             let mouse_color = [0.9, 1.0, 0.9, 0.1];//light green
-            graphics::rectangle(mouse_color,  to_f64_4(mouse_pos[0], mouse_pos[1], 1, 1),  transform,  gfx);
+            piston_window::rectangle(mouse_color,  to_f64_4(mouse_pos[0], mouse_pos[1], 1, 1),  transform,  gfx);
         }
 
         //border lines
         let line_color = [0.4, 0.4, 0.4, 0.3];//grey
         for y in 1..BOARD_HEIGHT {
-            graphics::line(line_color, BORDER_RADIUS, to_f64_4(0,y,BOARD_WIDTH,y),  transform, gfx);
+            piston_window::line(line_color, BORDER_RADIUS, to_f64_4(0,y,BOARD_WIDTH,y),  transform, gfx);
         }
         for x in 1..BOARD_WIDTH {
-            graphics::line(line_color, BORDER_RADIUS, to_f64_4(x,0,x,BOARD_HEIGHT),  transform, gfx);
+            piston_window::line(line_color, BORDER_RADIUS, to_f64_4(x,0,x,BOARD_HEIGHT),  transform, gfx);
         }
     }
 
@@ -342,13 +341,10 @@ struct Game {
     }
 }
 
-use piston::window::WindowSettings;
-use piston::event_loop::Events;
-use piston::input::{Button, Motion, Input};
 use opengl_graphics::OpenGL;
-use graphics::draw_state::Blend;
-
-extern crate piston_window;
+use piston_window::{Button, Motion, Input};
+use piston_window::draw_state::Blend;
+use piston_window::{WindowSettings, Events};
 use piston_window::PistonWindow;
 
 use std::time::Instant;

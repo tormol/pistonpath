@@ -8,9 +8,7 @@ name = "pistonPath"
 path = "path.rs"
 
 [dependencies]
-piston = "0.31"
 piston_window = "0.64"
-piston2d-graphics = "0.21"
 piston2d-opengl_graphics = "0.42"
 vecmath = "0.3"
 num = "0.1.34"
