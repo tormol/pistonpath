@@ -1,7 +1,11 @@
 [package]
 name = "pistonPath"
 version = "1.0.0"
+description = "A simple pathfinding demo with Piston"
+readme = "README.md"
+repository = "https://gitlab.com/torbmol/space_tennis"
 authors = ["Torbjørn Birch Moltu <t.b.moltu@lyse.net>"]
+license = "GPL-3.0-or-later"
 
 [[bin]]
 name = "path"

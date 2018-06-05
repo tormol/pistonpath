@@ -1,1 +1,4 @@
-/target/
+target
+
+[Tt]humbs.db
+.DS_Store
