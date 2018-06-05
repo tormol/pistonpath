@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = ["Torbjørn Birch Moltu <t.b.moltu@lyse.net>"]
 
 [[bin]]
-name = "pistonPath"
+name = "path"
 path = "path.rs"
 
 [dependencies]

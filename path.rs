@@ -1,22 +1,23 @@
-/* Copyright (C) 2015 by Alexandru Cojocaru */
+/* Copyright (C) 2015 Alexandru Cojocaru,
+ *               2018 Torbjørn Birch Moltu
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
-/* This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
-
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>. */
-
-#![allow(non_snake_case)]
 const FONT_PATH: &'static str = "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
 const FONT_RESOLUTION: f64 = 100.0;
-const BORDER_RADIUS: f64 = 0.03;//where 1 is tile_size
+const BORDER_RADIUS: f64 = 0.03; // relative to tile_size
 const TILE_MIN_PADDING: f64 = 0.1;
 const SHOW_DIGITS: f64 = 3.0;
 const INITIAL_TILE_SIZE: f64 = 50.0;
@@ -30,24 +31,24 @@ use std::ops::Neg;
 extern crate num;
 use num::{Zero,One,ToPrimitive};
 extern crate vecmath;
-use vecmath::vec2_add;// Vector2 is [T; 2]
-// Why not +?
+use vecmath::vec2_add; // Vector2 is [T; 2]
+// Why not just use `+`?
 // Any math library in rust have to make a choice: Either use primitive slices or tuples
 // which make constructing and destructuring pain-free, or use std::ops::*.
 // Rusts coherence rules prevents them for doing both:
 // You cannot implement an external trait for a foreign type.
 extern crate piston_window;
-use piston_window::{Context,DrawState,Transformed,color,math};
-use piston_window::types::Color;
+use piston_window::{Context,DrawState,Transformed,color,math}; // from piston2d-graphics
+use piston_window::types::Color; // from piston2d-graphics
 
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Clone,Copy, PartialEq,Eq)]
 enum Direction {North, South, East, West}
 use self::Direction::*;
 impl Direction {
     /// Is generic so it can produce both floats and integers
-    fn unit_vector<T:Zero+One+Neg<Output=T>> (&self) -> [T; 2] {
-        match *self {
+    fn unit_vector<T:Zero+One+Neg<Output=T>>(self) -> [T; 2] {
+        match self {
             North => [T::zero(),       T::one()      ],
             South => [T::zero(),       T::one().neg()],
             East  => [T::one(),        T::zero()     ],
@@ -57,19 +58,19 @@ impl Direction {
 }
 
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Clone,Copy, PartialEq,Eq)]
 struct Path {
-    distance : i32,
-    next : Direction,
+    distance: i32,
+    next: Direction,
 }
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Clone,Copy, PartialEq,Eq)]
 enum Tile {
     Wall,
     Target,
-    Open (Option<Path>)
+    Open(Option<Path>),
 }
-use self::Tile::*;//use Wall instead of Tile::Wall
+use self::Tile::*; // use Wall instead of Tile::Wall
 impl Tile {
     fn color(&self) -> Color { match *self {
         Wall    => color::hex("002951"),
@@ -80,7 +81,7 @@ impl Tile {
 
 use std::cmp;
 use std::collections::vec_deque::VecDeque;
-
+// from piston::input:
 use piston_window::keyboard::Key;
 use piston_window::mouse::MouseButton;
 extern crate opengl_graphics;
@@ -100,12 +101,12 @@ struct Game {
     paused: bool,
     time: f64,
     update_time: f64,
-    //static resources
+    // static resources
     res_character_cache: GlyphCache<'static>,
 } impl Game {
     fn new() -> Game {
         let mut g = Game {
-            res_character_cache: GlyphCache::new(std::path::Path::new(FONT_PATH)).unwrap(),
+            res_character_cache: GlyphCache::new(FONT_PATH).unwrap(),
             time: 0.0,
             update_time: 0.0,
             paused: false,
@@ -123,8 +124,8 @@ struct Game {
         g.drones.push([0.3, BOARD_HEIGHT as f64-0.7]);
         g.drones.push([BOARD_WIDTH as f64-0.7, 0.3]);
         g.drones.push([BOARD_WIDTH as f64-0.7, BOARD_HEIGHT as f64-0.7]);
-        return g;// Just `g` would do, but to me looks unfinished below `g.something`.
-    }            // like I forgot to write the rest of the function.
+        return g; // Just `g` would do, but to me looks unfinished below `g.something`.
+    }             // like I forgot to write the rest of the function.
 
     /// In the returned pair, first[0]<=second[0] and first[1]<=second[1],
     /// now they can be uused in a loop or draw
@@ -138,9 +139,9 @@ struct Game {
             [a.to_f64().unwrap(), b.to_f64().unwrap(), c.to_f64().unwrap(), d.to_f64().unwrap()]
         }
 
-        piston_window::clear(color::BLACK, gfx);//comment out and see!
+        piston_window::clear(color::BLACK, gfx); // comment out and see!
 
-        //tiles
+        // tiles
         for (y_usize,ref row) in self.board.into_iter().enumerate() {
             for (x_usize,tile) in row.into_iter().enumerate() {
                 let (x,y) = (x_usize as f64, y_usize as f64);
@@ -177,20 +178,20 @@ struct Game {
 
         // hover highlight and selection
         if let Some(mouse_pos) = self.mouse_pos {
-            //selection
+            // selection
             if let Some(start) = self.selection_start {
                 let (a,b) = Game::order_points(start, mouse_pos);
                 let rect = to_f64_4(a[0], a[1],  b[0]-a[0]+1, b[1]-a[1]+1);
-                let selection_color = [1.0, 1.0, 1.0, 0.2];//white
+                let selection_color = [1.0, 1.0, 1.0, 0.2]; // white
                 piston_window::rectangle(selection_color, rect, transform, gfx);
             }
-            //hover
-            let mouse_color = [0.9, 1.0, 0.9, 0.1];//light green
+            // hover
+            let mouse_color = [0.9, 1.0, 0.9, 0.1]; // light green
             piston_window::rectangle(mouse_color,  to_f64_4(mouse_pos[0], mouse_pos[1], 1, 1),  transform,  gfx);
         }
 
-        //border lines
-        let line_color = [0.4, 0.4, 0.4, 0.3];//grey
+        // border lines
+        let line_color = [0.4, 0.4, 0.4, 0.3]; // grey
         for y in 1..BOARD_HEIGHT {
             piston_window::line(line_color, BORDER_RADIUS, to_f64_4(0,y,BOARD_WIDTH,y),  transform, gfx);
         }
@@ -249,9 +250,9 @@ struct Game {
         }
     }
 
-    /// Recalculates the numbers when you change the destination.
+    /// Recalculates the numbers when the destination you change the destination.
     fn update_paths(&mut self) {
-        //reset all
+        // reset all
         for tile in self.board.iter_mut().flat_map(|row| row.iter_mut() ) {
             if let Open(Some(_)) = *tile {
                 *tile = Open(None);
@@ -259,9 +260,7 @@ struct Game {
         }
 
         if let Some(target) = self.target {
-            fn go(board: &mut Board,  p: [i32; 2],
-                  from_dist: i32,  from_dir: Direction)
-            -> bool {
+            fn go(board: &mut Board,  p: [i32; 2],  from_dist: i32,  from_dir: Direction) -> bool {
                 if p[0]>=0  &&  p[0]<BOARD_WIDTH
                 && p[1]>=0  &&  p[1]<BOARD_HEIGHT {
                     let tile = &mut board[p[1]as usize][p[0]as usize];
@@ -272,7 +271,7 @@ struct Game {
                             true
                         } else {false}
                     } else if from_dist==0 && *tile == Target {
-                        true//initial tile
+                        true // initial tile
                     } else {false}
                 } else {false}
             }
@@ -342,26 +341,27 @@ struct Game {
 }
 
 use opengl_graphics::OpenGL;
-use piston_window::{Button, Motion, Input};
-use piston_window::draw_state::Blend;
-use piston_window::{WindowSettings, Events};
-use piston_window::PistonWindow;
+use piston_window::{Input,Button,Motion,RenderArgs,UpdateArgs}; // from piston::input
+use piston_window::draw_state::Blend; // from piston2d-graphics
+use piston_window::WindowSettings; // from piston::window
+use piston_window::Events; // from piston::event_loop
+use piston_window::PistonWindow; // from piston_window
 
 use std::time::Instant;
 
 // Handles setup, resize and converting mouse coordinates to tile coordinates.
 fn main() {
-    println!("Left click to move or remove tha yellow target.");
-    println!("Right click to place or remove walls.");
-    println!("(You can also select multiple tiles.)");
-    println!("");
+    println!("Left click to place or remove walls,");
+    println!(" drag to select multiple tiles.");
+    println!("Right click to move or remove tha yellow target.");
     println!("Press p to pause");
 
     let window_size = [
         INITIAL_TILE_SIZE as u32  *  BOARD_WIDTH as u32,
         INITIAL_TILE_SIZE as u32  *  BOARD_HEIGHT as u32
     ];
-    let mut window: PistonWindow = WindowSettings::new("PistonPath", window_size)
+    let mut window: PistonWindow = // <GlutinWindow>
+        WindowSettings::new("PistonPath", window_size)
         .exit_on_esc(true)
         .vsync(true)
         .build()
@@ -369,29 +369,40 @@ fn main() {
 
     let mut gfx = GlGraphics::new(OpenGL::V3_2);
 
-    let mut tile_size = INITIAL_TILE_SIZE;//changes if window is resized
-    let mut offset = [0.0; 2];//letterboxing after resize
+    let mut tile_size = INITIAL_TILE_SIZE; // changes if window is resized
+    let mut offset = [0.0; 2]; // letterboxing after resize
 
     let mut game = Game::new();
     let mut frames = 0;
     let started = Instant::now();
     let mut event_loop: Events = window.events;
-    while let Some(e) = event_loop.next(&mut window) {
-        match e {
-            Input::Render(render_args/*: RenderArgs*/) => {
+    while let Some(input) = event_loop.next(&mut window) {
+        match input {
+            Input::Render(render_args) => {
+                let render_args: RenderArgs = render_args;
                 frames += 1;
-                let context: Context = Context::new_viewport(render_args.viewport())
-                                               .trans(offset[0], offset[1])
-                                               .scale(tile_size, tile_size);
-                //by default alpha blending is disabled, which means all semi-transparent colors are considered opaque.
-                //since colors are blended pixel for pixel, this has a performance cost,
-                //the alternative is to check for existing color in tile, and blend manually, or even statically
-                context.draw_state.blend(Blend::Alpha);
 
-                game.render(context.draw_state, context.transform, &mut gfx);
+                // An optimization introduced in opengl_graphics 0.39.1 causes
+                // severe glitching if not wrapped in .draw.
+                // (calling it afterwards with an empty closure seems to work too)
+                gfx.draw(render_args.viewport(), |context, gfx| {
+                    let context: Context = context;
+                    let gfx: &mut GlGraphics = gfx; // the same instance as outside
+                    // Handle resized windows by scaling and letterboxing.
+                    let context: Context = context.trans(offset[0], offset[1])
+                                                  .scale(tile_size, tile_size);
+
+                    // By default alpha blending is disabled, which means all
+                    // semi-transparent colors are considered opaque.
+                    // Since colors are blended pixel for pixel, this has a
+                    // performance cost. Alternatively we could check for
+                    // existing color in tile, and blend with that.
+                    context.draw_state.blend(Blend::Alpha);
+                    game.render(context.draw_state, context.transform, gfx);
+                });
             }
-            Input::Update(update_args) => {
-                game.update(update_args.dt);//deltatime is its only field
+            Input::Update(UpdateArgs{dt}) => {
+                game.update(dt);
             }
 
             Input::Press(Button::Keyboard(key)) => {
@@ -403,7 +414,8 @@ fn main() {
             Input::Release(Button::Mouse(button)) => {
                 game.mouse_release(button);
             }
-            Input::Resize(x,y) => {/*x and y are u32*/
+            Input::Resize(x,y) => {
+                let (x,y): (u32,u32) = (x,y);
                 tile_size = f64::min(x as f64 / (BOARD_WIDTH as f64),
                                      y as f64 / (BOARD_HEIGHT as f64));
                 offset = [(x as f64 - tile_size*BOARD_WIDTH as f64) / 2.0,
@@ -411,6 +423,7 @@ fn main() {
                 gfx.viewport(0, 0, x as i32, y as i32);
             }
             Input::Move(Motion::MouseCursor(x,y)) => {
+                let (x,y): (f64,f64) = (x,y);
                 let mut pos = None;
                 // compare floats to avoid rounding at the edges
                 let x = (x - offset[0]) / tile_size;
@@ -421,12 +434,13 @@ fn main() {
                 }
                 game.mouse_move(pos);
             }
-            Input::Cursor(_) => {//only happens if a button is pressed
+            Input::Cursor(false) => {// cursor left window, only triggered if a button is pressed.
                 game.mouse_move(None);
             }
 
             _ => {}
         }
     }
-    println!("fps: {}", frames / started.elapsed().as_secs());
+    println!();
+    println!("average fps: {}", frames / started.elapsed().as_secs());
 }
