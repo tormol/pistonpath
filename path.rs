@@ -17,10 +17,11 @@
 
 // font-loader's API is too limitied to express "any sans-serif font, ideally monospace"
 const FONT_NAME: &'static str = "arial";
-const FONT_RESOLUTION: f64 = 100.0;
+const DIGIT_ASPECT_RATIO: f64 = 0.71; // observed width/height
+const MAX_DIGITS_SCALE: usize = 2; // don't increase digit size further when distance < 10
+const FONT_RESOLUTION: f64 = 100.0; // glyph height in pixels
 const BORDER_RADIUS: f64 = 0.03; // relative to tile_size
-const TILE_MIN_PADDING: f64 = 0.1;
-const SHOW_DIGITS: f64 = 3.0;
+const TILE_MIN_PADDING: f64 = 0.08;
 const INITIAL_TILE_SIZE: f64 = 50.0;
 
 const BOARD_WIDTH: i32 = 20;
@@ -159,15 +160,25 @@ struct Game<'a> {
                 piston_window::rectangle(tile.color(), [x,y,1.0,1.0], transform, gfx);
                 if let Open(Some(path)) = *tile {
                     // number rendering
-                    let as_str: &str = &path.distance.to_string()[..];//[..] converts String to str
-                    let digits = as_str.len() as f64;//digits aren't unicode
-                    let digit_height = 0.8;
-                    let digit_width = 0.6;
-                    let width = digit_width*SHOW_DIGITS;
-                    let scale_fill = f64::max(digit_height, width) - TILE_MIN_PADDING - BORDER_RADIUS;
-                    let bottom_padding = (1.0-digit_height/scale_fill) / 2.0;
-                    let left_padding = (1.0-width/scale_fill) / 2.0  +  (digit_width/(scale_fill-TILE_MIN_PADDING)) * (SHOW_DIGITS-digits);
-                    let scale_factor = 1.0 / (scale_fill*FONT_RESOLUTION);
+                    let as_str: &str = &path.distance.to_string()[..];
+                    let digits = as_str.len(); // digits aren't unicode
+                    let show_digits = usize::max(digits, MAX_DIGITS_SCALE);
+                    const AVAILABLE_DIGIT_HEIGHT: f64 = 1.0-2.0*(TILE_MIN_PADDING+BORDER_RADIUS);
+                    const AVAILABLE_BOX_WIDTH: f64 = AVAILABLE_DIGIT_HEIGHT;
+                    let available_digit_width = AVAILABLE_BOX_WIDTH / show_digits as f64;
+                    let digit_height = f64::min(AVAILABLE_DIGIT_HEIGHT, 
+                                                available_digit_width / DIGIT_ASPECT_RATIO);
+                    let scale_factor = digit_height / FONT_RESOLUTION;
+                    let digit_width = digit_height * DIGIT_ASPECT_RATIO;
+                    let box_width = digit_width*digits as f64;
+                    let bottom_padding = (1.0-digit_height) / 2.0;
+                    let left_box_padding = (1.0-box_width) / 2.0;
+                    let left_padding = left_box_padding;
+                    // debugging rectangles
+                    // piston_window::rectangle(color::hex("226688"), [x+(1.0-AVAILABLE_BOX_WIDTH)/2.0,y+(1.0-AVAILABLE_DIGIT_HEIGHT)/2.0,AVAILABLE_BOX_WIDTH,AVAILABLE_DIGIT_HEIGHT], transform, gfx);
+                    // piston_window::rectangle(color::hex("2266aa"), [x+(1.0-AVAILABLE_BOX_WIDTH)/2.0,y+(1.0-AVAILABLE_DIGIT_HEIGHT)/2.0,available_digit_width,AVAILABLE_DIGIT_HEIGHT], transform, gfx);
+                    // piston_window::rectangle(color::hex("668888"), [x+left_box_padding,y+bottom_padding,box_width,digit_height], transform, gfx);
+                    // piston_window::rectangle(color::hex("6688aa"), [x+left_box_padding,y+bottom_padding,digit_width,digit_height], transform, gfx);
                     let char_pos = transform
                         .trans(x + left_padding,  1.0 + y - bottom_padding)
                         .scale(scale_factor, scale_factor);
