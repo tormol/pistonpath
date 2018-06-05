@@ -40,6 +40,10 @@ use vecmath::vec2_add; // Vector2 is [T; 2]
 extern crate piston_window;
 use piston_window::{Context,DrawState,Transformed,color,math}; // from piston2d-graphics
 use piston_window::types::Color; // from piston2d-graphics
+extern crate rand;
+use rand::{Rng,FromEntropy};
+use rand::rngs::SmallRng;
+use rand::distributions::Open01;
 
 
 #[derive(Clone,Copy, PartialEq,Eq)]
@@ -87,8 +91,6 @@ use piston_window::mouse::MouseButton;
 extern crate opengl_graphics;
 use opengl_graphics::GlGraphics;
 use opengl_graphics::glyph_cache::GlyphCache;
-extern crate rand;
-use rand::Rng;
 
 type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 // Contains the game logic
@@ -101,12 +103,14 @@ struct Game {
     paused: bool,
     time: f64,
     update_time: f64,
+    rng: SmallRng,
     // static resources
     res_character_cache: GlyphCache<'static>,
 } impl Game {
     fn new() -> Game {
         let mut g = Game {
             res_character_cache: GlyphCache::new(FONT_PATH).unwrap(),
+            rng: SmallRng::from_entropy(),
             time: 0.0,
             update_time: 0.0,
             paused: false,
@@ -225,9 +229,8 @@ struct Game {
                 Open(None) => {// jitter randomly
                     let min = [(m[0] as i32)as f64, (m[1] as i32)as f64];
                     let max = vec2_add(min, [0.6,0.6]);
-                    // returns [0,1), if positions seems to decrease, use Open01
-                    let x = m[0] + rand::thread_rng().next_f64() - 0.5;
-                    let y = m[1] + rand::thread_rng().next_f64() - 0.5;
+                    let x = m[0] + self.rng.sample::<f64,_>(Open01) - 0.5;
+                    let y = m[1] + self.rng.sample::<f64,_>(Open01) - 0.5;
                     if x >= min[0]  &&  x <= max[0] {
                         self.drones[i][0] = x;
                     }
