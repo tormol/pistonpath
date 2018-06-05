@@ -10,6 +10,7 @@ path = "path.rs"
 [dependencies]
 piston_window = "0.80"
 piston2d-opengl_graphics = "0.53"
+font-loader = "0.7"
 rand = "0.5"
 vecmath = "0.3"
 num = "0.1.27"

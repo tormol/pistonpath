@@ -15,7 +15,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-const FONT_PATH: &'static str = "/usr/share/fonts/truetype/msttcorefonts/arial.ttf";
+// font-loader's API is too limitied to express "any sans-serif font, ideally monospace"
+const FONT_NAME: &'static str = "arial";
 const FONT_RESOLUTION: f64 = 100.0;
 const BORDER_RADIUS: f64 = 0.03; // relative to tile_size
 const TILE_MIN_PADDING: f64 = 0.1;
@@ -57,6 +58,8 @@ extern crate rand;
 use rand::{Rng,FromEntropy};
 use rand::rngs::SmallRng;
 use rand::distributions::Open01;
+extern crate font_loader;
+use font_loader::system_fonts::{FontProperty,FontPropertyBuilder};
 
 
 #[derive(Clone,Copy, PartialEq,Eq)]
@@ -99,7 +102,7 @@ impl Tile {
 
 type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 // Contains the game logic
-struct Game {
+struct Game<'a> {
     board: Board,
     drones: Vec<[f64; 2]>,
     target: Option<[i32; 2]>,
@@ -109,12 +112,11 @@ struct Game {
     time: f64,
     update_time: f64,
     rng: SmallRng,
-    // static resources
-    res_character_cache: GlyphCache<'static>,
-} impl Game {
-    fn new() -> Game {
+    character_cache: GlyphCache<'a>,
+} impl<'a> Game<'a> {
+    fn new(font_data: &[u8]) -> Game {
         let mut g = Game {
-            res_character_cache: GlyphCache::new(FONT_PATH, (), TextureSettings::new()).unwrap(),
+            character_cache: GlyphCache::from_bytes(font_data, (), TextureSettings::new()).unwrap(),
             rng: SmallRng::from_entropy(),
             time: 0.0,
             update_time: 0.0,
@@ -170,7 +172,7 @@ struct Game {
                         .trans(x + left_padding,  1.0 + y - bottom_padding)
                         .scale(scale_factor, scale_factor);
                     piston_window::text::Text::new_color(Target.color(), FONT_RESOLUTION as u32)
-                        .draw(as_str, &mut self.res_character_cache, &draw_state, char_pos, gfx)
+                        .draw(as_str, &mut self.character_cache, &draw_state, char_pos, gfx)
                         .unwrap();
                 }
             }
@@ -373,7 +375,10 @@ fn main() {
     let mut tile_size = INITIAL_TILE_SIZE; // changes if window is resized
     let mut offset = [0.0; 2]; // letterboxing after resize
 
-    let mut game = Game::new();
+    let mut font_requirements: FontProperty = FontPropertyBuilder::new().family(FONT_NAME).build();
+    let font_data: Vec<u8> = font_loader::system_fonts::get(&mut font_requirements).unwrap().0;
+
+    let mut game = Game::new(&*font_data);
     let mut frames = 0;
     let started = Instant::now();
     let mut event_loop: Events = window.events;
