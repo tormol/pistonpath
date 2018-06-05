@@ -28,6 +28,9 @@ const UPDATE_TIME: f64 = 0.20;
 
 
 use std::ops::Neg;
+use std::cmp;
+use std::time::Instant;
+use std::collections::vec_deque::VecDeque;
 extern crate num;
 use num::{Zero,One,ToPrimitive};
 extern crate vecmath;
@@ -40,6 +43,16 @@ use vecmath::vec2_add; // Vector2 is [T; 2]
 extern crate piston_window;
 use piston_window::{Context,DrawState,Transformed,color,math}; // from piston2d-graphics
 use piston_window::types::Color; // from piston2d-graphics
+use piston_window::{MouseButton,Key};// from piston::input
+use piston_window::{Event,Loop,RenderArgs,UpdateArgs,Input}; // from piston_input
+use piston_window::{ButtonArgs,ButtonState,Button,Motion}; // from piston_input
+use piston_window::draw_state::Blend; // from piston2d-graphics
+use piston_window::WindowSettings; // from piston::window
+use piston_window::Events; // from piston::event_loop
+use piston_window::PistonWindow; // from piston_window
+use piston_window::TextureSettings; // from graphicsz65lw
+extern crate opengl_graphics;
+use opengl_graphics::{GlGraphics,GlyphCache,OpenGL};
 extern crate rand;
 use rand::{Rng,FromEntropy};
 use rand::rngs::SmallRng;
@@ -83,14 +96,6 @@ impl Tile {
     }}
 }
 
-use std::cmp;
-use std::collections::vec_deque::VecDeque;
-// from piston::input:
-use piston_window::keyboard::Key;
-use piston_window::mouse::MouseButton;
-extern crate opengl_graphics;
-use opengl_graphics::GlGraphics;
-use opengl_graphics::glyph_cache::GlyphCache;
 
 type Board = [[Tile; BOARD_WIDTH as usize]; BOARD_HEIGHT as usize];
 // Contains the game logic
@@ -109,7 +114,7 @@ struct Game {
 } impl Game {
     fn new() -> Game {
         let mut g = Game {
-            res_character_cache: GlyphCache::new(FONT_PATH).unwrap(),
+            res_character_cache: GlyphCache::new(FONT_PATH, (), TextureSettings::new()).unwrap(),
             rng: SmallRng::from_entropy(),
             time: 0.0,
             update_time: 0.0,
@@ -165,7 +170,8 @@ struct Game {
                         .trans(x + left_padding,  1.0 + y - bottom_padding)
                         .scale(scale_factor, scale_factor);
                     piston_window::text::Text::new_color(Target.color(), FONT_RESOLUTION as u32)
-                        .draw(as_str, &mut self.res_character_cache, &draw_state, char_pos, gfx);
+                        .draw(as_str, &mut self.res_character_cache, &draw_state, char_pos, gfx)
+                        .unwrap();
                 }
             }
         }
@@ -343,14 +349,6 @@ struct Game {
     }
 }
 
-use opengl_graphics::OpenGL;
-use piston_window::{Input,Button,Motion,RenderArgs,UpdateArgs}; // from piston::input
-use piston_window::draw_state::Blend; // from piston2d-graphics
-use piston_window::WindowSettings; // from piston::window
-use piston_window::Events; // from piston::event_loop
-use piston_window::PistonWindow; // from piston_window
-
-use std::time::Instant;
 
 // Handles setup, resize and converting mouse coordinates to tile coordinates.
 fn main() {
@@ -379,9 +377,9 @@ fn main() {
     let mut frames = 0;
     let started = Instant::now();
     let mut event_loop: Events = window.events;
-    while let Some(input) = event_loop.next(&mut window) {
-        match input {
-            Input::Render(render_args) => {
+    while let Some(e) = event_loop.next(&mut window) {
+        match e {
+            Event::Loop(Loop::Render(render_args)) => {
                 let render_args: RenderArgs = render_args;
                 frames += 1;
 
@@ -404,20 +402,19 @@ fn main() {
                     game.render(context.draw_state, context.transform, gfx);
                 });
             }
-            Input::Update(UpdateArgs{dt}) => {
+            Event::Loop(Loop::Update(UpdateArgs{dt})) => {
                 game.update(dt);
             }
 
-            Input::Press(Button::Keyboard(key)) => {
-                game.key_press(key);
+            Event::Input(Input::Button(ButtonArgs{state,button,..})) => {
+                match (button, state) {
+                    (Button::Keyboard(key), ButtonState::Press) => game.key_press(key),
+                    (Button::Mouse(button), ButtonState::Press) => game.mouse_press(button),
+                    (Button::Mouse(button), ButtonState::Release) => game.mouse_release(button),
+                    _ => {}
+                }
             }
-            Input::Press(Button::Mouse(button)) => {
-                game.mouse_press(button);
-            }
-            Input::Release(Button::Mouse(button)) => {
-                game.mouse_release(button);
-            }
-            Input::Resize(x,y) => {
+            Event::Input(Input::Resize(x,y)) => {
                 let (x,y): (u32,u32) = (x,y);
                 tile_size = f64::min(x as f64 / (BOARD_WIDTH as f64),
                                      y as f64 / (BOARD_HEIGHT as f64));
@@ -425,7 +422,7 @@ fn main() {
                           (y as f64 - tile_size*BOARD_HEIGHT as f64) / 2.0];
                 gfx.viewport(0, 0, x as i32, y as i32);
             }
-            Input::Move(Motion::MouseCursor(x,y)) => {
+            Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
                 let (x,y): (f64,f64) = (x,y);
                 let mut pos = None;
                 // compare floats to avoid rounding at the edges
@@ -437,7 +434,8 @@ fn main() {
                 }
                 game.mouse_move(pos);
             }
-            Input::Cursor(false) => {// cursor left window, only triggered if a button is pressed.
+            Event::Input(Input::Cursor(false)) => {
+                // cursor left window, only triggered if a button is pressed.
                 game.mouse_move(None);
             }
 

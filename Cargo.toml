@@ -8,8 +8,8 @@ name = "path"
 path = "path.rs"
 
 [dependencies]
-piston_window = "0.64"
-piston2d-opengl_graphics = "0.42"
+piston_window = "0.80"
+piston2d-opengl_graphics = "0.53"
 rand = "0.5.0"
 vecmath = "0.3"
 num = "0.1.34"
