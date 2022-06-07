@@ -46,7 +46,7 @@ extern crate piston_window;
 use piston_window::{Context,DrawState,Transformed,color,math}; // from piston2d-graphics
 use piston_window::types::Color; // from piston2d-graphics
 use piston_window::{MouseButton,Key};// from piston::input
-use piston_window::{Event,Loop,RenderArgs,UpdateArgs,Input}; // from piston_input
+use piston_window::{Event,Loop,RenderArgs,UpdateArgs,Input,ResizeArgs}; // from piston_input
 use piston_window::{ButtonArgs,ButtonState,Button,Motion}; // from piston_input
 use piston_window::draw_state::Blend; // from piston2d-graphics
 use piston_window::WindowSettings; // from piston::window
@@ -154,8 +154,8 @@ struct Game<'a> {
         piston_window::clear(color::BLACK, gfx); // comment out and see!
 
         // tiles
-        for (y_usize,ref row) in self.board.into_iter().enumerate() {
-            for (x_usize,tile) in row.into_iter().enumerate() {
+        for (y_usize,ref row) in self.board.iter().enumerate() {
+            for (x_usize,tile) in row.iter().enumerate() {
                 let (x,y) = (x_usize as f64, y_usize as f64);
                 piston_window::rectangle(tile.color(), [x,y,1.0,1.0], transform, gfx);
                 if let Open(Some(path)) = *tile {
@@ -393,16 +393,22 @@ fn main() {
     let mut frames = 0;
     let started = Instant::now();
     let mut event_loop: Events = window.events;
+    // let mut prev_view = None;
     while let Some(e) = event_loop.next(&mut window) {
         match e {
             Event::Loop(Loop::Render(render_args)) => {
                 let render_args: RenderArgs = render_args;
+                let viewport = render_args.viewport();
+                // if Some(viewport) != prev_view {
+                //     println!("viewport: {:#?}", viewport);
+                //     prev_view = Some(viewport);
+                // }
                 frames += 1;
 
                 // An optimization introduced in opengl_graphics 0.39.1 causes
                 // severe glitching if not wrapped in .draw.
                 // (calling it afterwards with an empty closure seems to work too)
-                gfx.draw(render_args.viewport(), |context, gfx| {
+                gfx.draw(viewport, |context, gfx| {
                     let context: Context = context;
                     let gfx: &mut GlGraphics = gfx; // the same instance as outside
                     // Handle resized windows by scaling and letterboxing.
@@ -422,7 +428,7 @@ fn main() {
                 game.update(dt);
             }
 
-            Event::Input(Input::Button(ButtonArgs{state,button,..})) => {
+            Event::Input(Input::Button(ButtonArgs{state,button,..}), _) => {
                 match (button, state) {
                     (Button::Keyboard(key), ButtonState::Press) => game.key_press(key),
                     (Button::Mouse(button), ButtonState::Press) => game.mouse_press(button),
@@ -430,15 +436,15 @@ fn main() {
                     _ => {}
                 }
             }
-            Event::Input(Input::Resize(x,y)) => {
-                let (x,y): (u32,u32) = (x,y);
-                tile_size = f64::min(x as f64 / (BOARD_WIDTH as f64),
-                                     y as f64 / (BOARD_HEIGHT as f64));
-                offset = [(x as f64 - tile_size*BOARD_WIDTH as f64) / 2.0,
-                          (y as f64 - tile_size*BOARD_HEIGHT as f64) / 2.0];
-                gfx.viewport(0, 0, x as i32, y as i32);
+            Event::Input(Input::Resize(ResizeArgs{window_size: [x,y], ..}), _) => {
+                let (x,y): (f64,f64) = (x,y);
+                tile_size = f64::min(x / (BOARD_WIDTH as f64),
+                                     y / (BOARD_HEIGHT as f64));
+                offset = [(x - tile_size*BOARD_WIDTH as f64) / 2.0,
+                          (y - tile_size*BOARD_HEIGHT as f64) / 2.0];
+                //println!("x: {}, y: {}, tile_size: {}, offset: [{}, {}]", x, y, tile_size, offset[0], offset[1]);
             }
-            Event::Input(Input::Move(Motion::MouseCursor(x,y))) => {
+            Event::Input(Input::Move(Motion::MouseCursor([x,y])), _) => {
                 let (x,y): (f64,f64) = (x,y);
                 let mut pos = None;
                 // compare floats to avoid rounding at the edges
@@ -450,7 +456,7 @@ fn main() {
                 }
                 game.mouse_move(pos);
             }
-            Event::Input(Input::Cursor(false)) => {
+            Event::Input(Input::Cursor(false), _) => {
                 // cursor left window, only triggered if a button is pressed.
                 game.mouse_move(None);
             }
